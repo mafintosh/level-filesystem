@@ -22,13 +22,19 @@ var prefix = function(key) {
 	return '0000000000'.slice(depth.length)+depth+key;
 };
 
+var nextTick = function(cb, err, val) {
+	process.nextTick(function() {
+		cb(err, val);
+	});
+};
+
 var noop = function() {};
 
 module.exports = function(db) {
 	var that = {};
 
 	var get = function(key, cb) {
-		if (key === '/') return cb(null, ROOT);
+		if (key === '/') return nextTick(cb, null, ROOT);
 		db.get(prefix(key), function(err, doc) {
 			if (err && err.notFound) return cb(errno.ENOENT(key));
 			if (err) return cb(err);
@@ -37,12 +43,12 @@ module.exports = function(db) {
 	};
 
 	var put = function(key, val, cb) {
-		if (key === '/') return cb(errno.EPERM(key));
+		if (key === '/') return nextTick(cb, errno.EPERM(key));
 		db.put(prefix(key), stat(val), cb);
 	};
 
 	var del = function(key, cb) {
-		if (key === '/') return cb(errno.EPERM(key));
+		if (key === '/') return nextTick(cb, errno.EPERM(key));
 		db.del(prefix(key), cb);
 	};
 
@@ -180,6 +186,11 @@ module.exports = function(db) {
 				rename();
 			});
 		});
+	};
+
+	that.realpath = function(key, cache, cb) {
+		if (typeof cache === 'function') return that.realpath(key, null, cache);
+		nextTick(cb, null, normalize(key));
 	};
 
 	return that;
