@@ -12,6 +12,6 @@
     "memdb": "^0.1.0"
   },
   "scripts": {
-    "test": "tap test/*.js"
+    "test": "tap test/test-*.js"
   }
 }
