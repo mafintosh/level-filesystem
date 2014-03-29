@@ -157,6 +157,18 @@ module.exports = function(db) {
 		});
 	};
 
+	fs.utimes = function(key, atime, mtime, cb) {
+		if (!cb) cb = noop;
+		key = normalize(key);
+
+		fs.stat(key, function(err) {
+			if (err) return cb(err);
+			if (atime) stat.atime = atime;
+			if (mtime) stat.mtime = mtime;
+			put(key, stat, cb);
+		});
+	};
+
 	fs.rename = function(from, to, cb) {
 		if (!cb) cb = noop;
 		from = normalize(from);
@@ -220,6 +232,7 @@ module.exports = function(db) {
 
 					put(key, {
 						ctime: stat && stat.ctime,
+						mtime: new Date(),
 						size:data.length,
 						mode: opts.mode || 0666,
 						type:'file'
