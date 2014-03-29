@@ -64,7 +64,7 @@ module.exports = function(db) {
 			if (err) return cb(err);
 
 			get(key, function(err, entry) {
-				if (err) return cb(err);
+				if (err && err.code !== 'ENOENT') return cb(err);
 				if (entry) return cb(errno.EEXIST(key));
 
 				put(key, stat({
