@@ -6,6 +6,9 @@
 
 [![build status](https://secure.travis-ci.org/mafintosh/level-filesystem.png)](http://travis-ci.org/mafintosh/level-filesystem)
 
+[![browser support](https://ci.testling.com/mafintosh/level-filesystem.png)
+](https://ci.testling.com/mafintosh/level-filesystem)
+
 The goal of this module is similar to [level-fs](https://github.com/juliangruber/level-fs) and is probably gonna end up as a PR to that module.
 I decided to make this as a standalone module (for now) since adding proper directory support to [level-fs](https://github.com/juliangruber/level-fs)
 turned out to be non-trivial (more or a less a complete rewrite).
