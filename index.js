@@ -35,7 +35,7 @@ module.exports = function(db) {
 
 	var get = function(key, cb) {
 		if (key === '/') return nextTick(cb, null, ROOT);
-		db.get(prefix(key), function(err, doc) {
+		db.get(prefix(key), {valueEncoding:'json'}, function(err, doc) {
 			if (err && err.notFound) return cb(errno.ENOENT(key));
 			if (err) return cb(err);
 			cb(null, doc && stat(doc));
@@ -44,7 +44,7 @@ module.exports = function(db) {
 
 	var put = function(key, val, cb) {
 		if (key === '/') return nextTick(cb, errno.EPERM(key));
-		db.put(prefix(key), stat(val), cb);
+		db.put(prefix(key), stat(val), {valueEncoding:'json'}, cb);
 	};
 
 	var del = function(key, cb) {

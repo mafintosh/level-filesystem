@@ -4,7 +4,7 @@ var level = require('level');
 var memdb = require('memdb');
 
 var reset = function() {
-	return filesystem(memdb({valueEncoding:'json'}));
+	return filesystem(memdb());
 };
 
 module.exports = function(name, fn) {
