@@ -1,4 +1,4 @@
-var filesystem = require('../');
+var filesystem = require('../../');
 var test = require('tape');
 var memdb = require('memdb');
 

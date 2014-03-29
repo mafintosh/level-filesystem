@@ -1,4 +1,4 @@
-var test = require('./test');
+var test = require('./helpers/test');
 
 test('readdir', function(fs, t) {
 	fs.readdir('/', function(err, list) {

@@ -1,4 +1,4 @@
-var test = require('./test');
+var test = require('./helpers/test');
 
 test('readFile', function(fs, t) {
 	fs.writeFile('/test.txt', 'hello', function(err) {

@@ -1,4 +1,4 @@
-var test = require('./test');
+var test = require('./helpers/test');
 
 test('unlink', function(fs, t) {
 	fs.unlink('/test', function(err) {

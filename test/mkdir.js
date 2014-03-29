@@ -1,4 +1,4 @@
-var test = require('./test');
+var test = require('./helpers/test');
 
 test('mkdir', function(fs, t) {
 	fs.mkdir('/foo/bar', function(err) {

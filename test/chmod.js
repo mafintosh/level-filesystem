@@ -1,4 +1,4 @@
-var test = require('./test');
+var test = require('./helpers/test');
 
 test('chmod', function(fs, t) {
 	fs.mkdir('/foo', function() {

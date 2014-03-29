@@ -1,4 +1,4 @@
-var test = require('./test');
+var test = require('./helpers/test');
 
 test('exists', function(fs, t) {
 	fs.exists('/', function(exists) {

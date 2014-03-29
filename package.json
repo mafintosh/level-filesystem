@@ -15,10 +15,10 @@
     "tape": "^2.12.0"
   },
   "scripts": {
-    "test": "tape test/test-*.js"
+    "test": "tape test/*.js"
   },
   "testling": {
-    "files": "test/test-*.js",
+    "files": "test/*.js",
     "browsers": [
       "ie/8..latest",
       "firefox/17..latest",

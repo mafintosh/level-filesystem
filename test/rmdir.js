@@ -1,4 +1,4 @@
-var test = require('./test');
+var test = require('./helpers/test');
 
 test('rmdir', function(fs, t) {
 	fs.rmdir('/', function(err) {
