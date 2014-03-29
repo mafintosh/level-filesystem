@@ -148,5 +148,39 @@ module.exports = function(db) {
 		});
 	};
 
+	that.rename = function(from, to, cb) {
+		if (!cb) cb = noop;
+		from = normalize(from);
+		to = normalize(to);
+
+		get(from, function(err, statFrom) {
+			if (err) return cb(err);
+
+			var rename = function() {
+				put(to, statFrom, function(err) {
+					if (err) return cb(err);
+					del(from, cb);
+				});
+			};
+
+			get(to, function(err, statTo) { // TODO: add exact semantics
+				if (err && err.code !== 'ENOENT') return cb(err);
+				if (!statTo) return rename();
+				if (statFrom.isDirectory() !== statTo.isDirectory()) return cb(errno.EISDIR(from));
+
+				if (statTo.isDirectory()) {
+					that.readdir(to, function(err, list) {
+						if (err) return cb(err);
+						if (list.length) return cb(errno.ENOTEMPTY(from));
+						rename();
+					});
+					return;
+				}
+
+				rename();
+			});
+		});
+	};
+
 	return that;
 };
