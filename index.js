@@ -1,6 +1,7 @@
 var path = require('path');
 var concat = require('concat-stream');
 var sublevel = require('level-sublevel');
+var store = require('level-store');
 var once = require('once');
 var stat = require('./stat');
 var errno = require('./errno');
@@ -37,7 +38,7 @@ module.exports = function(db) {
 	db = sublevel(db);
 
 	var stats = db.sublevel('stats');
-	var blobs = db.sublevel('blobs');
+	var blobs = store(db.sublevel('blobs'));
 
 	var get = function(key, cb) {
 		if (key === '/') return nextTick(cb, null, ROOT);
@@ -58,6 +59,14 @@ module.exports = function(db) {
 		stats.del(prefix(key), cb);
 	};
 
+	var checkParentDirectory = function(key, cb) {
+		get(path.dirname(key), function(err, parent) {
+			if (err) return cb(err);
+			if (!parent.isDirectory()) return cb(errno.ENOTDIR(key));
+			cb()
+		});
+	};
+
 	fs.mkdir = function(key, mode, cb) {
 		if (typeof mode === 'function') return fs.mkdir(key, null, mode);
 		if (!mode) mode = 0777;
@@ -68,9 +77,8 @@ module.exports = function(db) {
 			if (err && err.code !== 'ENOENT') return cb(err);
 			if (entry) return cb(errno.EEXIST(key));
 
-			get(path.dirname(key), function(err, parent) {
+			checkParentDirectory(key, function(err) {
 				if (err) return cb(err);
-				if (!parent.isDirectory()) return cb(errno.ENOTDIR(key));
 
 				put(key, stat({
 					type:'directory',
@@ -186,6 +194,68 @@ module.exports = function(db) {
 	fs.realpath = function(key, cache, cb) {
 		if (typeof cache === 'function') return fs.realpath(key, null, cache);
 		nextTick(cb, null, normalize(key));
+	};
+
+	fs.writeFile = function(key, data, opts, cb) {
+		if (typeof opts === 'function') return fs.writeFile(key, data, null, opts);
+		if (typeof opts === 'string') opts = {encoding:opts};
+		if (!opts) opts = {};
+		if (!cb) cb = noop;
+		key = normalize(key);
+
+		if (!Buffer.isBuffer(data)) data = new Buffer(data, opts.encoding || 'utf-8');
+
+		var flag = opts.flag || 'w';
+		var method = flag[0] === 'w' ? 'set' : 'append';
+
+		get(key, function(err, stat) {
+			if (err && err.code !== 'ENOENT') return cb(err);
+			if (stat && stat.isDirectory()) return cb(errno.EISDIR(key));
+
+			checkParentDirectory(key, function(err) {
+				if (err) return cb(err);
+
+				blobs[method](key, data, function(err) {
+					if (err) return cb(err);
+
+					put(key, {
+						ctime: stat && stat.ctime,
+						size:data.length,
+						mode: opts.mode || 0666,
+						type:'file'
+					}, cb);
+				});
+			});
+		});
+	};
+
+	fs.appendFile = function(key, data, opts, cb) {
+		if (typeof opts === 'function') return fs.appendFile(key, data, null, opts);
+		if (typeof opts === 'string') opts = {encoding:opts};
+		if (!opts) opts = {};
+
+		opts.flag = 'append';
+		fs.writeFile(key, data, opts, cb);
+	};
+
+	fs.readFile = function(key, opts, cb) {
+		if (typeof opts === 'function') return fs.readFile(key, null, opts);
+		if (typeof opts === 'string') opts = {encoding:opts};
+		if (!opts) opts = {};
+		key = normalize(key);
+
+		var encoding = opts.encoding || 'binary';
+		var flag = opts.flag || 'r';
+
+		get(key, function(err, stat) {
+			if (err) return cb(err);
+			if (stat.isDirectory()) return cb(errno.EISDIR(key));
+
+			blobs.get(key, function(err, data) {
+				if (err) return cb(err);
+				cb(null, opts.encoding ? data.toString(opts.encoding) : data);
+			});
+		});
 	};
 
 	return fs;
