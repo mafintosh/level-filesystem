@@ -31,7 +31,7 @@ var nextTick = function(cb, err, val) {
 var noop = function() {};
 
 module.exports = function(db) {
-	var that = {};
+	var fs = {};
 
 	var get = function(key, cb) {
 		if (key === '/') return nextTick(cb, null, ROOT);
@@ -60,8 +60,8 @@ module.exports = function(db) {
 		});
 	};
 
-	that.mkdir = function(key, mode, cb) {
-		if (typeof mode === 'function') return that.mkdir(key, null, mode);
+	fs.mkdir = function(key, mode, cb) {
+		if (typeof mode === 'function') return fs.mkdir(key, null, mode);
 		if (!mode) mode = 0777;
 		if (!cb) cb = noop;
 		key = normalize(key);
@@ -82,18 +82,18 @@ module.exports = function(db) {
 		});
 	};
 
-	that.rmdir = function(key, cb) {
+	fs.rmdir = function(key, cb) {
 		if (!cb) cb = noop;
 		key = normalize(key);
 
-		that.readdir(key, function(err, files) {
+		fs.readdir(key, function(err, files) {
 			if (err) return cb(err);
 			if (files.length) return cb(errno.ENOTEMPTY(key));
 			del(key, cb);
 		});
 	};
 
-	that.readdir = function(key, cb) {
+	fs.readdir = function(key, cb) {
 		key = normalize(key);
 
 		checkParent(key, function(err) {
@@ -121,32 +121,32 @@ module.exports = function(db) {
 		});
 	};
 
-	that.stat = function(key, cb) {
+	fs.stat = function(key, cb) {
 		get(normalize(key), cb);
 	};
 
-	that.exists = function(key, cb) {
-		that.stat(key, function(err) {
+	fs.exists = function(key, cb) {
+		fs.stat(key, function(err) {
 			cb(!err);
 		});
 	};
 
-	that.chmod = function(key, mode, cb) {
+	fs.chmod = function(key, mode, cb) {
 		if (!cb) cb = noop;
 		key = normalize(key);
 
-		that.stat(key, function(err) {
+		fs.stat(key, function(err) {
 			if (err) return cb(err);
 			stat.mode = mode;
 			put(key, stat, cb);
 		});
 	};
 
-	that.chown = function(key, uid, gid, cb) {
+	fs.chown = function(key, uid, gid, cb) {
 		if (!cb) cb = noop;
 		key = normalize(key);
 
-		that.stat(key, function(err) {
+		fs.stat(key, function(err) {
 			if (err) return cb(err);
 			stat.uid = uid;
 			stat.gid = gid;
@@ -154,7 +154,7 @@ module.exports = function(db) {
 		});
 	};
 
-	that.rename = function(from, to, cb) {
+	fs.rename = function(from, to, cb) {
 		if (!cb) cb = noop;
 		from = normalize(from);
 		to = normalize(to);
@@ -175,7 +175,7 @@ module.exports = function(db) {
 				if (statFrom.isDirectory() !== statTo.isDirectory()) return cb(errno.EISDIR(from));
 
 				if (statTo.isDirectory()) {
-					that.readdir(to, function(err, list) {
+					fs.readdir(to, function(err, list) {
 						if (err) return cb(err);
 						if (list.length) return cb(errno.ENOTEMPTY(from));
 						rename();
@@ -188,10 +188,10 @@ module.exports = function(db) {
 		});
 	};
 
-	that.realpath = function(key, cache, cb) {
-		if (typeof cache === 'function') return that.realpath(key, null, cache);
+	fs.realpath = function(key, cache, cb) {
+		if (typeof cache === 'function') return fs.realpath(key, null, cache);
 		nextTick(cb, null, normalize(key));
 	};
 
-	return that;
+	return fs;
 };
