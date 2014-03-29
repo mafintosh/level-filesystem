@@ -1,6 +1,5 @@
 var filesystem = require('../');
 var test = require('tap').test;
-var level = require('level');
 var memdb = require('memdb');
 
 var reset = function() {
