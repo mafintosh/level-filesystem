@@ -1,0 +1,10 @@
+{
+  "name": "level-filesystem",
+  "version": "0.0.0",
+  "description": "node's fs module powered by leveldb",
+  "dependencies": {
+    "once": "^1.3.0",
+    "errno": "^0.1.1",
+    "concat-stream": "^1.4.4"
+  }
+}
