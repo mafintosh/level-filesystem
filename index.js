@@ -125,5 +125,28 @@ module.exports = function(db) {
 		});
 	};
 
+	that.chmod = function(key, mode, cb) {
+		if (!cb) cb = noop;
+		key = normalize(key);
+
+		that.stat(key, function(err) {
+			if (err) return cb(err);
+			stat.mode = mode;
+			put(key, stat, cb);
+		});
+	};
+
+	that.chown = function(key, uid, gid, cb) {
+		if (!cb) cb = noop;
+		key = normalize(key);
+
+		that.stat(key, function(err) {
+			if (err) return cb(err);
+			stat.uid = uid;
+			stat.gid = gid;
+			put(key, stat, cb);
+		});
+	};
+
 	return that;
 };
