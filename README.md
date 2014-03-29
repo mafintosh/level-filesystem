@@ -65,6 +65,7 @@ fs.mkdir('/hello', function() {
 ✓ fs.writeFile(filename, data, [options], callback)
 ✓ fs.appendFile(filename, data, [options], callback)
 ✓ fs.utimes(path, atime, mtime, callback)
+✓ fs.unlink(path, callback)
 
 // pending
 
@@ -79,7 +80,6 @@ fs.fstat(fd, callback)
 fs.link(srcpath, dstpath, callback)
 fs.symlink(srcpath, dstpath, [type], callback)
 fs.readlink(path, callback)
-fs.unlink(path, callback)
 fs.close(fd, callback)
 fs.open(path, flags, [mode], callback)
 fs.futimes(fd, atime, mtime, callback)

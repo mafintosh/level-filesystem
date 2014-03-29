@@ -251,6 +251,21 @@ module.exports = function(db) {
 		fs.writeFile(key, data, opts, cb);
 	};
 
+	fs.unlink = function(key, cb) {
+		if (!cb) cb = noop;
+		key = normalize(key);
+
+		get(key, function(err, stat) {
+			if (err) return cb(err);
+			if (stat.isDirectory()) return cb(errno.EISDIR(key));
+
+			blobs.delete(key, function(err) {
+				if (err) return cb(err);
+				del(key, cb);
+			});
+		});
+	};
+
 	fs.readFile = function(key, opts, cb) {
 		if (typeof opts === 'function') return fs.readFile(key, null, opts);
 		if (typeof opts === 'string') opts = {encoding:opts};
