@@ -58,26 +58,19 @@ module.exports = function(db) {
 		stats.del(prefix(key), cb);
 	};
 
-	var checkParent = function(key, cb) {
-		get(path.dirname(key), function(err, entry) {
-			if (err) return cb(err);
-			if (!entry.isDirectory()) return cb(errno.ENOTDIR(key));
-			cb();
-		});
-	};
-
 	fs.mkdir = function(key, mode, cb) {
 		if (typeof mode === 'function') return fs.mkdir(key, null, mode);
 		if (!mode) mode = 0777;
 		if (!cb) cb = noop;
 		key = normalize(key);
 
-		checkParent(key, function(err) {
-			if (err) return cb(err);
+		get(key, function(err, entry) {
+			if (err && err.code !== 'ENOENT') return cb(err);
+			if (entry) return cb(errno.EEXIST(key));
 
-			get(key, function(err, entry) {
-				if (err && err.code !== 'ENOENT') return cb(err);
-				if (entry) return cb(errno.EEXIST(key));
+			get(path.dirname(key), function(err, parent) {
+				if (err) return cb(err);
+				if (!parent.isDirectory()) return cb(errno.ENOTDIR(key));
 
 				put(key, stat({
 					type:'directory',
@@ -102,28 +95,24 @@ module.exports = function(db) {
 	fs.readdir = function(key, cb) {
 		key = normalize(key);
 
-		checkParent(key, function(err) {
+		get(key, function(err, entry) {
 			if (err) return cb(err);
+			if (!entry) return cb(errno.ENOENT(key));
+			if (!entry.isDirectory()) return cb(errno.ENOTDIR(key));
 
-			get(key, function(err, entry) {
-				if (err) return cb(err);
-				if (!entry) return cb(errno.ENOENT(key));
-				if (!entry.isDirectory()) return cb(errno.ENOTDIR(key));
+			var start = prefix(key === '/' ? key : key + '/');
+			var keys = stats.createKeyStream({start: start, end: start+'\xff'});
 
-				var start = prefix(key === '/' ? key : key + '/');
-				var keys = stats.createKeyStream({start: start, end: start+'\xff'});
+			cb = once(cb);
 
-				cb = once(cb);
+			keys.on('error', cb);
+			keys.pipe(concat({encoding:'object'}, function(files) {
+				files = files.map(function(file) {
+					return file.split('/').pop();
+				});
 
-				keys.on('error', cb);
-				keys.pipe(concat({encoding:'object'}, function(files) {
-					files = files.map(function(file) {
-						return file.split('/').pop();
-					});
-
-					cb(null, files);
-				}));
-			});
+				cb(null, files);
+			}));
 		});
 	};
 
