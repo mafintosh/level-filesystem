@@ -1,5 +1,6 @@
 var path = require('path');
 var concat = require('concat-stream');
+var sublevel = require('level-sublevel');
 var once = require('once');
 var stat = require('./stat');
 var errno = require('./errno');
@@ -33,9 +34,14 @@ var noop = function() {};
 module.exports = function(db) {
 	var fs = {};
 
+	db = sublevel(db);
+
+	var stats = db.sublevel('stats');
+	var blobs = db.sublevel('blobs');
+
 	var get = function(key, cb) {
 		if (key === '/') return nextTick(cb, null, ROOT);
-		db.get(prefix(key), {valueEncoding:'json'}, function(err, doc) {
+		stats.get(prefix(key), {valueEncoding:'json'}, function(err, doc) {
 			if (err && err.notFound) return cb(errno.ENOENT(key));
 			if (err) return cb(err);
 			cb(null, doc && stat(doc));
@@ -44,12 +50,12 @@ module.exports = function(db) {
 
 	var put = function(key, val, cb) {
 		if (key === '/') return nextTick(cb, errno.EPERM(key));
-		db.put(prefix(key), stat(val), {valueEncoding:'json'}, cb);
+		stats.put(prefix(key), stat(val), {valueEncoding:'json'}, cb);
 	};
 
 	var del = function(key, cb) {
 		if (key === '/') return nextTick(cb, errno.EPERM(key));
-		db.del(prefix(key), cb);
+		stats.del(prefix(key), cb);
 	};
 
 	var checkParent = function(key, cb) {
@@ -105,7 +111,7 @@ module.exports = function(db) {
 				if (!entry.isDirectory()) return cb(errno.ENOTDIR(key));
 
 				var start = prefix(key === '/' ? key : key + '/');
-				var keys = db.createKeyStream({start: start, end: start+'\xff'});
+				var keys = stats.createKeyStream({start: start, end: start+'\xff'});
 
 				cb = once(cb);
 
