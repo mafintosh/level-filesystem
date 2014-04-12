@@ -1,13 +1,10 @@
-var path = require('path');
-var events = require('events');
-var concat = require('concat-stream');
 var fwd = require('fwd-stream');
 var sublevel = require('level-sublevel');
 var blobs = require('level-blobs');
 var once = require('once');
-var stat = require('./stat');
 var errno = require('./errno');
 var paths = require('./paths');
+var watchers = require('./watchers');
 
 var nextTick = function(cb, err, val) {
 	process.nextTick(function() {
@@ -25,20 +22,8 @@ module.exports = function(db, opts) {
 	var stats = db.sublevel('stats');
 	var bl = blobs(db.sublevel('blobs'), opts);
 	var ps = paths(stats);
-
-	var listeners = {};
+	var listeners = watchers();
 	var fds = [];
-
-	var change = function(key) {
-		if (listeners[key]) listeners[key].emit('change');
-	};
-
-	var changeCallback = function(key, cb) {
-		return function(err, val) {
-			change(key);
-			if (cb) cb(err, val);
-		};
-	};
 
 	fs.mkdir = function(key, mode, cb) {
 		if (typeof mode === 'function') return fs.mkdir(key, null, mode);
@@ -49,13 +34,11 @@ module.exports = function(db, opts) {
 			if (err && err.code !== 'ENOENT') return cb(err);
 			if (stat) return cb(errno.EEXIST(key));
 
-			cb = changeCallback(key, cb);
-
 			ps.put(key, {
 				type:'directory',
 				mode: mode,
 				size: 4096
-			}, cb);
+			}, listeners.cb(key, cb));
 		});
 	};
 
@@ -63,11 +46,10 @@ module.exports = function(db, opts) {
 		if (!cb) cb = noop;
 		ps.follow(key, function(err, stat, key) {
 			if (err) return cb(err);
-			cb = changeCallback(key, cb);
 			fs.readdir(key, function(err, files) {
 				if (err) return cb(err);
 				if (files.length) return cb(errno.ENOTEMPTY(key));
-				ps.del(key, cb);
+				ps.del(key, listeners.cb(key, cb));
 			});
 		});
 
@@ -78,7 +60,6 @@ module.exports = function(db, opts) {
 			if (err) return cb(err);
 			if (!stat) return cb(errno.ENOENT(key));
 			if (!stat.isDirectory()) return cb(errno.ENOTDIR(key));
-
 			ps.list(key, cb);
 		});
 	};
@@ -105,7 +86,7 @@ module.exports = function(db, opts) {
 		if (!cb) cb = noop;
 		ps.follow(key, function(err, stat, key) {
 			if (err) return cb(err);
-			ps.update(key, {mode:mode}, changeCallback(key, cb));
+			ps.update(key, {mode:mode}, listeners.cb(key, cb));
 		});
 	};
 
@@ -113,7 +94,7 @@ module.exports = function(db, opts) {
 		if (!cb) cb = noop;
 		ps.follow(key, function(err, stat, key) {
 			if (err) return cb(err);
-			ps.update(key, {uid:uid, gid:gid}, changeCallback(key, cb));
+			ps.update(key, {uid:uid, gid:gid}, listeners.cb(key, cb));
 		});
 	};
 
@@ -124,7 +105,7 @@ module.exports = function(db, opts) {
 			var upd = {};
 			if (atime) upd.atime = atime;
 			if (mtime) upd.mtime = mtime;
-			ps.update(key, upd, changeCallback(key, cb));
+			ps.update(key, upd, listeners.cb(key, cb));
 		});
 	};
 
@@ -135,7 +116,7 @@ module.exports = function(db, opts) {
 			if (err) return cb(err);
 
 			var rename = function() {
-				cb = changeCallback(to, changeCallback(from, cb));
+				cb = listeners.cb(to, listeners.cb(from, cb));
 				ps.put(to, statFrom, function(err) {
 					if (err) return cb(err);
 					ps.del(from, cb);
@@ -185,7 +166,6 @@ module.exports = function(db, opts) {
 			if (stat && stat.isDirectory()) return cb(errno.EISDIR(key));
 			if (stat && flags[1] === 'x') return cb(errno.EEXIST(key));
 
-			cb = changeCallback(key, cb);
 			ps.writable(key, function(err) {
 				if (err) return cb(err);
 				bl.write(key, data, opts, function(err) {
@@ -196,7 +176,7 @@ module.exports = function(db, opts) {
 						mtime: new Date(),
 						mode: opts.mode || 0666,
 						type:'file'
-					}, cb);
+					}, listeners.cb(key, cb));
 				});
 			});
 		});
@@ -218,10 +198,9 @@ module.exports = function(db, opts) {
 			if (err) return cb(err);
 			if (stat.isDirectory()) return cb(errno.EISDIR(key));
 
-			cb = changeCallback(key, cb);
 			bl.remove(key, function(err) {
 				if (err) return cb(err);
-				ps.del(key, cb);
+				ps.del(key, listeners.cb(key, cb));
 			});
 		});
 	};
@@ -309,7 +288,7 @@ module.exports = function(db, opts) {
 						w.on('finish', function() {
 							s.mtime = new Date();
 							ps.put(key, s, function() {
-								change(key);
+								listeners.change(key);
 								if (!closed) ws.emit('close');
 							});
 						});
@@ -337,7 +316,7 @@ module.exports = function(db, opts) {
 				ps.writable(key, function(err) {
 					if (err) return cb(err);
 
-					cb = once(changeCallback(key, cb));
+					cb = once(listeners.cb(key, cb));
 					if (!len) return bl.remove(key, cb);
 
 					var ws = bl.createWriteStream(key, {
@@ -356,38 +335,15 @@ module.exports = function(db, opts) {
 
 	fs.watchFile = function(key, opts, cb) {
 		if (typeof opts === 'function') return fs.watchFile(key, null, opts);
-		key = ps.normalize(key);
-
-		if (!listeners[key]) {
-			listeners[key] = new events.EventEmitter();
-			listeners[key].setMaxListeners(0);
-		}
-
-		if (cb) listeners[key].on('change', cb);
-		return listeners[key];
+		return listeners.watch(ps.normalize(key), cb);
 	};
 
 	fs.unwatchFile = function(key, cb) {
-		key = ps.normalize(key);
-		if (!listeners[key]) return;
-		if (cb) listeners[key].removeListener('change', cb);
-		else listeners[key].removeAllListeners('change');
-		if (!listeners[key].listeners('change').length) delete listeners[key];;
+		listeners.unwatch(ps.normalize(key), cb);
 	};
 
 	fs.watch = function(key, opts, cb) {
-		key = ps.normalize(key);
-		var watcher = new events.EventEmitter();
-		var onchange = function() {
-			watcher.emit('change', 'change', key);
-		};
-
-		fs.watchFile(key, onchange);
-		watcher.close = function() {
-			fs.unwatchFile(key, onchange);
-		};
-
-		return watcher;
+		return listeners.watcher(ps.normalize(key), cb);
 	};
 
 	fs.open = function(key, flags, mode, cb) {
@@ -427,6 +383,7 @@ module.exports = function(db, opts) {
 
 						f.fd = i;
 						fds[i] = f;
+						listeners.change(key);
 
 						cb(null, f.fd);
 					};
@@ -449,7 +406,7 @@ module.exports = function(db, opts) {
 		if (!f) return nextTick(cb, errno.EBADF());
 
 		fds[fd] = null;
-		nextTick(changeCallback(f.key, cb));
+		nextTick(listeners.cb(f.key, cb));
 	};
 
 	fs.write = function(fd, buf, off, len, pos, cb) {
