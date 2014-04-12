@@ -71,6 +71,8 @@ fs.mkdir('/hello', function() {
 ✓ fs.appendFile(filename, data, [options], callback)
 ✓ fs.utimes(path, atime, mtime, callback)
 ✓ fs.unlink(path, callback)
+✓ fs.createReadStream(path, [options])
+✓ fs.createWriteStream(path, [options])
 
 // pending
 
