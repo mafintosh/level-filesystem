@@ -358,6 +358,7 @@ module.exports = function(db, opts) {
 
 		var flags = opts.flags || 'w';
 		var closed = false;
+		var mode = opts.mode || 0666;
 
 		opts.append = flags[0] === 'a';
 
@@ -370,19 +371,23 @@ module.exports = function(db, opts) {
 				checkParentDirectory(key, function(err) {
 					if (err) return cb(err);
 
-					put(key, {
-						ctime: stat && stat.ctime,
+					var ctime = stat ? stat.ctime : new Date();
+					var s = {
+						ctime: ctime,
 						mtime: new Date(),
-						mode: opts.mode || 0666,
+						mode: mode,
 						type:'file'
-					}, function(err) {
+					};
+
+					put(key, s, function(err) {
 						if (err) return cb(err);
 
 						var w = bl.createWriteStream(key, opts);
 
 						ws.emit('open');
 						w.on('finish', function() {
-							process.nextTick(function() {
+							s.mtime = new Date();
+							put(key, s, function() {
 								if (!closed) ws.emit('close');
 							});
 						});
