@@ -8,7 +8,8 @@
     "errno": "^0.1.1",
     "concat-stream": "^1.4.4",
     "level-sublevel": "^5.2.0",
-    "level-store": "^3.10.1"
+    "level-blobs": "^0.1.2",
+    "fwd-stream": "^1.0.4"
   },
   "devDependencies": {
     "memdb": "^0.1.0",

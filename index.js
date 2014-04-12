@@ -1,7 +1,8 @@
 var path = require('path');
 var concat = require('concat-stream');
+var fwd = require('fwd-stream');
 var sublevel = require('level-sublevel');
-var store = require('level-store');
+var blobs = require('level-blobs');
 var once = require('once');
 var stat = require('./stat');
 var errno = require('./errno');
@@ -32,13 +33,13 @@ var nextTick = function(cb, err, val) {
 
 var noop = function() {};
 
-module.exports = function(db) {
+module.exports = function(db, opts) {
 	var fs = {};
 
 	db = sublevel(db);
 
 	var stats = db.sublevel('stats');
-	var blobs = store(db.sublevel('blobs'));
+	var bl = blobs(db.sublevel('blobs'), opts);
 
 	var get = function(key, cb) {
 		if (key === '/') return nextTick(cb, null, ROOT);
@@ -125,7 +126,17 @@ module.exports = function(db) {
 	};
 
 	fs.stat = function(key, cb) {
-		get(normalize(key), cb);
+		key = normalize(key);
+		get(key, function(err, stat) {
+			if (err) return cb(err);
+			if (stat.size) return cb(null, stat);
+
+			bl.size(key, function(err, size) {
+				if (err) return cb(err);
+				stat.size = size;
+				cb(null, stat);
+			});
+		});
 	};
 
 	fs.exists = function(key, cb) {
@@ -217,23 +228,23 @@ module.exports = function(db) {
 
 		if (!Buffer.isBuffer(data)) data = new Buffer(data, opts.encoding || 'utf-8');
 
-		var flag = opts.flag || 'w';
-		var method = flag[0] === 'w' ? 'set' : 'append';
+		var flags = opts.flags || 'w';
+		opts.append = flags[0] !== 'w';
 
 		get(key, function(err, stat) {
 			if (err && err.code !== 'ENOENT') return cb(err);
 			if (stat && stat.isDirectory()) return cb(errno.EISDIR(key));
+			if (stat && flags[1] === 'x') return cb(errno.EEXIST(key));
 
 			checkParentDirectory(key, function(err) {
 				if (err) return cb(err);
 
-				blobs[method](key, data, function(err) {
+				bl.write(key, data, opts, function(err) {
 					if (err) return cb(err);
 
 					put(key, {
 						ctime: stat && stat.ctime,
 						mtime: new Date(),
-						size:data.length,
 						mode: opts.mode || 0666,
 						type:'file'
 					}, cb);
@@ -247,7 +258,7 @@ module.exports = function(db) {
 		if (typeof opts === 'string') opts = {encoding:opts};
 		if (!opts) opts = {};
 
-		opts.flag = 'append';
+		opts.flags = 'a';
 		fs.writeFile(key, data, opts, cb);
 	};
 
@@ -259,7 +270,7 @@ module.exports = function(db) {
 			if (err) return cb(err);
 			if (stat.isDirectory()) return cb(errno.EISDIR(key));
 
-			blobs.delete(key, function(err) {
+			bl.remove(key, function(err) {
 				if (err) return cb(err);
 				del(key, cb);
 			});
@@ -279,11 +290,63 @@ module.exports = function(db) {
 			if (err) return cb(err);
 			if (stat.isDirectory()) return cb(errno.EISDIR(key));
 
-			blobs.get(key, function(err, data) {
+			bl.read(key, function(err, data) {
 				if (err) return cb(err);
 				cb(null, opts.encoding ? data.toString(opts.encoding) : data);
 			});
 		});
+	};
+
+	fs.createReadStream = function(key, opts) {
+		if (!opts) opts = {};
+		key = normalize(key);
+
+		var rs = fwd.readable(function(cb) {
+			get(key, function(err, stat) {
+				if (err) return cb(err);
+				if (stat.isDirectory()) return cb(errno.EISDIR(key));
+
+				rs.emit('open');
+				cb(null, bl.createReadStream(key, opts));
+			});
+		});
+
+		return rs;
+	};
+
+	fs.createWriteStream = function(key, opts) {
+		if (!opts) opts = {};
+		key = normalize(key);
+
+		var flags = opts.flags || 'w';
+
+		opts.append = flags[0] === 'a';
+
+		var ws = fwd.writable(function(cb) {
+			get(key, function(err, stat) {
+				if (err && err.code !== 'ENOENT') return cb(err);
+				if (stat && stat.isDirectory()) return cb(errno.EISDIR(key));
+				if (stat && flags[1] === 'x') return cb(errno.EEXIST(key));
+
+				checkParentDirectory(key, function(err) {
+					if (err) return cb(err);
+
+					put(key, {
+						ctime: stat && stat.ctime,
+						mtime: new Date(),
+						mode: opts.mode || 0666,
+						type:'file'
+					}, function(err) {
+						if (err) return cb(err);
+
+						ws.emit('open');
+						cb(null, bl.createWriteStream(key, opts));
+					});
+				});
+			});
+		});
+
+		return ws;
 	};
 
 	return fs;
