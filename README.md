@@ -77,6 +77,11 @@ fs.mkdir('/hello', function() {
 ✓ fs.watchFile(filename, [options], listener)
 ✓ fs.unwatchFile(filename, [listener])
 ✓ fs.watch(filename, [options], [listener])
+✓ fs.fsync(fd, callback)
+✓ fs.write(fd, buffer, offset, length, position, callback)
+✓ fs.read(fd, buffer, offset, length, position, callback)
+✓ fs.close(fd, callback)
+✓ fs.open(path, flags, [mode], callback)
 
 // pending
 
@@ -90,12 +95,7 @@ fs.fstat(fd, callback)
 fs.link(srcpath, dstpath, callback)
 fs.symlink(srcpath, dstpath, [type], callback)
 fs.readlink(path, callback)
-fs.close(fd, callback)
-fs.open(path, flags, [mode], callback)
 fs.futimes(fd, atime, mtime, callback)
-fs.fsync(fd, callback)
-fs.write(fd, buffer, offset, length, position, callback)
-fs.read(fd, buffer, offset, length, position, callback)
 ```
 
 ## License
