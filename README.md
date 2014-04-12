@@ -73,11 +73,14 @@ fs.mkdir('/hello', function() {
 ✓ fs.unlink(path, callback)
 ✓ fs.createReadStream(path, [options])
 ✓ fs.createWriteStream(path, [options])
+✓ fs.truncate(path, len, callback)
+✓ fs.watchFile(filename, [options], listener)
+✓ fs.unwatchFile(filename, [listener])
+✓ fs.watch(filename, [options], [listener])
 
 // pending
 
 fs.ftruncate(fd, len, callback)
-fs.truncate(path, len, callback)
 fs.fchown(fd, uid, gid, callback)
 fs.lchown(path, uid, gid, callback)
 fs.fchmod(fd, mode, callback)
@@ -93,9 +96,6 @@ fs.futimes(fd, atime, mtime, callback)
 fs.fsync(fd, callback)
 fs.write(fd, buffer, offset, length, position, callback)
 fs.read(fd, buffer, offset, length, position, callback)
-fs.watchFile(filename, [options], listener)
-fs.unwatchFile(filename, [listener])
-fs.watch(filename, [options], [listener])
 ```
 
 ## License
