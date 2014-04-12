@@ -82,20 +82,20 @@ fs.mkdir('/hello', function() {
 ✓ fs.read(fd, buffer, offset, length, position, callback)
 ✓ fs.close(fd, callback)
 ✓ fs.open(path, flags, [mode], callback)
+✓ fs.futimes(fd, atime, mtime, callback)
+✓ fs.fchown(fd, uid, gid, callback)
+✓ fs.ftruncate(fd, len, callback)
+✓ fs.fchmod(fd, mode, callback)
+✓ fs.fstat(fd, callback)
 
 // pending
 
-fs.ftruncate(fd, len, callback)
-fs.fchown(fd, uid, gid, callback)
 fs.lchown(path, uid, gid, callback)
-fs.fchmod(fd, mode, callback)
 fs.lchmod(path, mode, callback)
 fs.lstat(path, callback)
-fs.fstat(fd, callback)
 fs.link(srcpath, dstpath, callback)
 fs.symlink(srcpath, dstpath, [type], callback)
 fs.readlink(path, callback)
-fs.futimes(fd, atime, mtime, callback)
 ```
 
 ## License
