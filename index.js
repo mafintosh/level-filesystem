@@ -41,7 +41,9 @@ module.exports = function(db, opts) {
 
 	var stats = db.sublevel('stats');
 	var bl = blobs(db.sublevel('blobs'), opts);
+
 	var listeners = {};
+	var fds = [];
 
 	var change = function(key) {
 		if (listeners[key]) listeners[key].emit('change');
@@ -458,6 +460,108 @@ module.exports = function(db, opts) {
 		};
 
 		return watcher;
+	};
+
+	fs.open = function(key, flags, mode, cb) {
+		if (typeof mode === 'function') return fs.open(key, flags, null, mode);
+		key = normalize(key);
+
+		var fl = flags[0];
+		var plus = flags[1] === '+' || flags[2] === '+';
+
+		var f = {
+			key: key,
+			mode: mode || 0666,
+			readable: fl === 'r' || ((fl === 'w' || fl === 'a') && plus),
+			writable: fl === 'w' || fl === 'a' || (fl === 'r' && plus),
+			append: fl === 'a'
+		};
+
+		fs.stat(key, function(err, stat) {
+			if (err && err.code !== 'ENOENT') return cb(err);
+			if (fl === 'r' && err) return cb(err);
+			if (flags[1] === 'x' && stat) return cb(errno.EEXIST(key));
+			if (stat && stat.isDirectory()) return cb(errno.EISDIR(key)); // not strictly fs... TODO: fix?
+
+			if (f.append && stat) f.writePos = stat.size;
+
+			checkParentDirectory(key, function(err) {
+				if (err) return cb(err);
+
+				var onready = function(err) {
+					if (err) return cb(err);
+
+					var i = fds.indexOf(null);
+					if (i === -1) i = 10+fds.push(fds.length+10)-1;
+
+					f.fd = i;
+					fds[i] = f;
+
+					cb(null, f.fd);
+				};
+
+				var ontruncate = function(err) {
+					if (err) return cb(err);
+					if (stat) return onready();
+					put(key, {type:'file'}, onready);
+				};
+
+				if (!f.append && f.writable) return bl.remove(key, ontruncate);
+				ontruncate();
+			});
+		});
+	};
+
+	fs.close = function(fd, cb) {
+		var f = fds[fd];
+		if (!f) return nextTick(cb, errno.EBADF());
+
+		cb = changeCallback(f.key, cb);
+		fds[fd] = null;
+		nextTick(cb);
+	};
+
+	fs.write = function(fd, buf, off, len, pos, cb) {
+		var f = fds[fd];
+
+		if (!cb) cb = noop;
+		if (!f || !f.writable) return nextTick(cb, errno.EBADF());
+
+		if (pos === null) pos = f.writePos || 0;
+
+		var slice = buf.slice(off, off+len);
+		f.writePos = pos + slice.length;
+
+		bl.write(f.key, slice, {start:pos, append:true}, function(err) {
+			if (err) return cb(err);
+			cb(null, len, buf);
+		});
+	};
+
+	fs.read = function(fd, buf, off, len, pos, cb) {
+		var f = fds[fd];
+
+		if (!cb) cb = noop;
+		if (!f || !f.readable) return nextTick(cb, errno.EBADF());
+
+		if (pos === null) pos = fs.readPos || 0;
+
+		bl.read(f.key, {start:pos, end:pos+len-1}, function(err, read) {
+			if (err) return cb(err);
+			var slice = read.slice(0, len);
+			slice.copy(buf, off);
+			fs.readPos = pos+slice.length;
+			cb(null, slice.length, buf);
+		});
+	};
+
+	fs.fsync = function(fd, cb) {
+		var f = fds[fd];
+
+		if (!cb) cb = noop;
+		if (!f || !f.writable) return nextTick(cb, errno.EBADF());
+
+		nextTick(cb);
 	};
 
 	return fs;
