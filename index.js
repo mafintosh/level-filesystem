@@ -569,5 +569,19 @@ module.exports = function(db, opts) {
 		nextTick(cb);
 	};
 
+	['ftruncate', 'fchown', 'futimes', 'fstat', 'fchmod'].forEach(function(method) {
+		var mirror = method.slice(1);
+		fs[method] = function(fd) {
+			var f = fds[fd];
+			var cb = arguments[arguments.length-1];
+
+			if (typeof cb !== 'function') cb = noop;
+			if (!f) return nextTick(cb, errno.EBADF());
+
+			fd = f.key;
+			fs[mirror].apply(fs, arguments);
+		};
+	});
+
 	return fs;
 };
