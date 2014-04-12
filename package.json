@@ -1,6 +1,6 @@
 {
   "name": "level-filesystem",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "(TO BE) A full implementation of the fs module in leveldb",
   "repository": "git://github.com:mafintosh/level-filesystem.git",
   "dependencies": {
