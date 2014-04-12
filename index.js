@@ -349,5 +349,32 @@ module.exports = function(db, opts) {
 		return ws;
 	};
 
+	fs.truncate = function(key, len, cb) {
+		key = normalize(key);
+		cb = once(cb || noop);
+
+		get(key, function(err, stat) {
+			if (err) return cb(err);
+			checkParentDirectory(key, function(err) {
+				if (err) return cb(err);
+				if (!len) return bl.remove(key, cb);
+
+				bl.size(key, function(err, size) {
+					if (err) return cb(err);
+
+					var ws = bl.createWriteStream(key, {
+						start:size < len ? len-1 : len
+					});
+
+					ws.on('error', cb);
+					ws.on('finish', cb);
+
+					if (size < len) ws.write(new Buffer([0]));
+					ws.end();
+				});
+			});
+		});
+	};
+
 	return fs;
 };
