@@ -7,24 +7,7 @@ var blobs = require('level-blobs');
 var once = require('once');
 var stat = require('./stat');
 var errno = require('./errno');
-
-var ROOT = stat({
-	type: 'directory',
-	mode: 0777,
-	size: 4096
-});
-
-var normalize = function(key) {
-	key = key[0] === '/' ? key : '/' + key;
-	key = path.normalize(key);
-	if (key === '/') return key;
-	return key[key.length-1] === '/' ? key.slice(0, -1) : key;
-};
-
-var prefix = function(key) {
-	var depth = key.split('/').length.toString(36);
-	return '0000000000'.slice(depth.length)+depth+key;
-};
+var paths = require('./paths');
 
 var nextTick = function(cb, err, val) {
 	process.nextTick(function() {
@@ -41,6 +24,7 @@ module.exports = function(db, opts) {
 
 	var stats = db.sublevel('stats');
 	var bl = blobs(db.sublevel('blobs'), opts);
+	var ps = paths(stats);
 
 	var listeners = {};
 	var fds = [];
@@ -56,98 +40,53 @@ module.exports = function(db, opts) {
 		};
 	};
 
-	var get = function(key, cb) {
-		if (key === '/') return nextTick(cb, null, ROOT);
-		stats.get(prefix(key), {valueEncoding:'json'}, function(err, doc) {
-			if (err && err.notFound) return cb(errno.ENOENT(key));
-			if (err) return cb(err);
-			cb(null, doc && stat(doc));
-		});
-	};
-
-	var put = function(key, val, cb) {
-		if (key === '/') return nextTick(cb, errno.EPERM(key));
-		stats.put(prefix(key), stat(val), {valueEncoding:'json'}, cb);
-	};
-
-	var del = function(key, cb) {
-		if (key === '/') return nextTick(cb, errno.EPERM(key));
-		stats.del(prefix(key), cb);
-	};
-
-	var checkParentDirectory = function(key, cb) {
-		get(path.dirname(key), function(err, parent) {
-			if (err) return cb(err);
-			if (!parent.isDirectory()) return cb(errno.ENOTDIR(key));
-			cb()
-		});
-	};
-
 	fs.mkdir = function(key, mode, cb) {
 		if (typeof mode === 'function') return fs.mkdir(key, null, mode);
 		if (!mode) mode = 0777;
 		if (!cb) cb = noop;
-		key = normalize(key);
-		cb = changeCallback(key, cb);
 
-		get(key, function(err, entry) {
+		ps.follow(key, function(err, stat, key) {
 			if (err && err.code !== 'ENOENT') return cb(err);
-			if (entry) return cb(errno.EEXIST(key));
+			if (stat) return cb(errno.EEXIST(key));
 
-			checkParentDirectory(key, function(err) {
-				if (err) return cb(err);
+			cb = changeCallback(key, cb);
 
-				put(key, stat({
-					type:'directory',
-					mode: mode,
-					size: 4096
-				}), cb);
-			});
+			ps.put(key, {
+				type:'directory',
+				mode: mode,
+				size: 4096
+			}, cb);
 		});
 	};
 
 	fs.rmdir = function(key, cb) {
 		if (!cb) cb = noop;
-		key = normalize(key);
-		cb = changeCallback(key, cb);
-
-		fs.readdir(key, function(err, files) {
+		ps.follow(key, function(err, stat, key) {
 			if (err) return cb(err);
-			if (files.length) return cb(errno.ENOTEMPTY(key));
-			del(key, cb);
+			cb = changeCallback(key, cb);
+			fs.readdir(key, function(err, files) {
+				if (err) return cb(err);
+				if (files.length) return cb(errno.ENOTEMPTY(key));
+				ps.del(key, cb);
+			});
 		});
+
 	};
 
 	fs.readdir = function(key, cb) {
-		key = normalize(key);
-
-		get(key, function(err, entry) {
+		ps.follow(key, function(err, stat, key) {
 			if (err) return cb(err);
-			if (!entry) return cb(errno.ENOENT(key));
-			if (!entry.isDirectory()) return cb(errno.ENOTDIR(key));
+			if (!stat) return cb(errno.ENOENT(key));
+			if (!stat.isDirectory()) return cb(errno.ENOTDIR(key));
 
-			var start = prefix(key === '/' ? key : key + '/');
-			var keys = stats.createKeyStream({start: start, end: start+'\xff'});
-
-			cb = once(cb);
-
-			keys.on('error', cb);
-			keys.pipe(concat({encoding:'object'}, function(files) {
-				files = files.map(function(file) {
-					return file.split('/').pop();
-				});
-
-				cb(null, files);
-			}));
+			ps.list(key, cb);
 		});
 	};
 
 	fs.stat = function(key, cb) {
-		key = normalize(key);
-		get(key, function(err, stat) {
+		ps.follow(key, function(err, stat, key) {
 			if (err) return cb(err);
 			if (stat.size) return cb(null, stat);
-
 			bl.size(key, function(err, size) {
 				if (err) return cb(err);
 				stat.size = size;
@@ -157,66 +96,53 @@ module.exports = function(db, opts) {
 	};
 
 	fs.exists = function(key, cb) {
-		fs.stat(key, function(err) {
+		ps.follow(key, function(err) {
 			cb(!err);
 		});
 	};
 
 	fs.chmod = function(key, mode, cb) {
 		if (!cb) cb = noop;
-		key = normalize(key);
-		cb = changeCallback(key, cb);
-
-		fs.stat(key, function(err) {
+		ps.follow(key, function(err, stat, key) {
 			if (err) return cb(err);
-			stat.mode = mode;
-			put(key, stat, cb);
+			ps.update(key, {mode:mode}, changeCallback(key, cb));
 		});
 	};
 
 	fs.chown = function(key, uid, gid, cb) {
 		if (!cb) cb = noop;
-		key = normalize(key);
-		cb = changeCallback(key, cb);
-
-		fs.stat(key, function(err) {
+		ps.follow(key, function(err, stat, key) {
 			if (err) return cb(err);
-			stat.uid = uid;
-			stat.gid = gid;
-			put(key, stat, cb);
+			ps.update(key, {uid:uid, gid:gid}, changeCallback(key, cb));
 		});
 	};
 
 	fs.utimes = function(key, atime, mtime, cb) {
 		if (!cb) cb = noop;
-		key = normalize(key);
-		cb = changeCallback(key, cb);
-
-		fs.stat(key, function(err) {
+		ps.follow(key, function(err, stat, key) {
 			if (err) return cb(err);
-			if (atime) stat.atime = atime;
-			if (mtime) stat.mtime = mtime;
-			put(key, stat, cb);
+			var upd = {};
+			if (atime) upd.atime = atime;
+			if (mtime) upd.mtime = mtime;
+			ps.update(key, upd, changeCallback(key, cb));
 		});
 	};
 
 	fs.rename = function(from, to, cb) {
 		if (!cb) cb = noop;
-		from = normalize(from);
-		to = normalize(to);
-		cb = changeCallback(to, changeCallback(from, cb));
 
-		get(from, function(err, statFrom) {
+		ps.follow(from, function(err, statFrom, from) {
 			if (err) return cb(err);
 
 			var rename = function() {
-				put(to, statFrom, function(err) {
+				cb = changeCallback(to, changeCallback(from, cb));
+				ps.put(to, statFrom, function(err) {
 					if (err) return cb(err);
-					del(from, cb);
+					ps.del(from, cb);
 				});
 			};
 
-			get(to, function(err, statTo) { // TODO: add exact semantics
+			ps.follow(to, function(err, statTo, to) {
 				if (err && err.code !== 'ENOENT') return cb(err);
 				if (!statTo) return rename();
 				if (statFrom.isDirectory() !== statTo.isDirectory()) return cb(errno.EISDIR(from));
@@ -237,7 +163,10 @@ module.exports = function(db, opts) {
 
 	fs.realpath = function(key, cache, cb) {
 		if (typeof cache === 'function') return fs.realpath(key, null, cache);
-		nextTick(cb, null, normalize(key));
+		ps.follow(key, function(err, stat, key) {
+			if (err) return cb(err);
+			cb(null, key);
+		});
 	};
 
 	fs.writeFile = function(key, data, opts, cb) {
@@ -245,26 +174,24 @@ module.exports = function(db, opts) {
 		if (typeof opts === 'string') opts = {encoding:opts};
 		if (!opts) opts = {};
 		if (!cb) cb = noop;
-		key = normalize(key);
-		cb = changeCallback(key, cb);
 
 		if (!Buffer.isBuffer(data)) data = new Buffer(data, opts.encoding || 'utf-8');
 
 		var flags = opts.flags || 'w';
 		opts.append = flags[0] !== 'w';
 
-		get(key, function(err, stat) {
+		ps.follow(key, function(err, stat, key) {
 			if (err && err.code !== 'ENOENT') return cb(err);
 			if (stat && stat.isDirectory()) return cb(errno.EISDIR(key));
 			if (stat && flags[1] === 'x') return cb(errno.EEXIST(key));
 
-			checkParentDirectory(key, function(err) {
+			cb = changeCallback(key, cb);
+			ps.writable(key, function(err) {
 				if (err) return cb(err);
-
 				bl.write(key, data, opts, function(err) {
 					if (err) return cb(err);
 
-					put(key, {
+					ps.put(key, {
 						ctime: stat && stat.ctime,
 						mtime: new Date(),
 						mode: opts.mode || 0666,
@@ -286,16 +213,15 @@ module.exports = function(db, opts) {
 
 	fs.unlink = function(key, cb) {
 		if (!cb) cb = noop;
-		key = normalize(key);
-		cb = changeCallback(key, cb);
 
-		get(key, function(err, stat) {
+		ps.get(key, function(err, stat, key) {
 			if (err) return cb(err);
 			if (stat.isDirectory()) return cb(errno.EISDIR(key));
 
+			cb = changeCallback(key, cb);
 			bl.remove(key, function(err) {
 				if (err) return cb(err);
-				del(key, cb);
+				ps.del(key, cb);
 			});
 		});
 	};
@@ -304,12 +230,11 @@ module.exports = function(db, opts) {
 		if (typeof opts === 'function') return fs.readFile(key, null, opts);
 		if (typeof opts === 'string') opts = {encoding:opts};
 		if (!opts) opts = {};
-		key = normalize(key);
 
 		var encoding = opts.encoding || 'binary';
 		var flag = opts.flag || 'r';
 
-		get(key, function(err, stat) {
+		ps.follow(key, function(err, stat, key) {
 			if (err) return cb(err);
 			if (stat.isDirectory()) return cb(errno.EISDIR(key));
 
@@ -322,12 +247,10 @@ module.exports = function(db, opts) {
 
 	fs.createReadStream = function(key, opts) {
 		if (!opts) opts = {};
-		key = normalize(key);
 
 		var closed = false;
-
 		var rs = fwd.readable(function(cb) {
-			get(key, function(err, stat) {
+			ps.follow(key, function(err, stat, key) {
 				if (err) return cb(err);
 				if (stat.isDirectory()) return cb(errno.EISDIR(key));
 
@@ -346,7 +269,6 @@ module.exports = function(db, opts) {
 
 		rs.on('close', function() {
 			closed = true;
-			change(key);
 		});
 
 		return rs;
@@ -354,7 +276,6 @@ module.exports = function(db, opts) {
 
 	fs.createWriteStream = function(key, opts) {
 		if (!opts) opts = {};
-		key = normalize(key);
 
 		var flags = opts.flags || 'w';
 		var closed = false;
@@ -363,12 +284,12 @@ module.exports = function(db, opts) {
 		opts.append = flags[0] === 'a';
 
 		var ws = fwd.writable(function(cb) {
-			get(key, function(err, stat) {
+			ps.follow(key, function(err, stat, key) {
 				if (err && err.code !== 'ENOENT') return cb(err);
 				if (stat && stat.isDirectory()) return cb(errno.EISDIR(key));
 				if (stat && flags[1] === 'x') return cb(errno.EEXIST(key));
 
-				checkParentDirectory(key, function(err) {
+				ps.writable(key, function(err) {
 					if (err) return cb(err);
 
 					var ctime = stat ? stat.ctime : new Date();
@@ -379,7 +300,7 @@ module.exports = function(db, opts) {
 						type:'file'
 					};
 
-					put(key, s, function(err) {
+					ps.put(key, s, function(err) {
 						if (err) return cb(err);
 
 						var w = bl.createWriteStream(key, opts);
@@ -387,7 +308,8 @@ module.exports = function(db, opts) {
 						ws.emit('open');
 						w.on('finish', function() {
 							s.mtime = new Date();
-							put(key, s, function() {
+							ps.put(key, s, function() {
+								change(key);
 								if (!closed) ws.emit('close');
 							});
 						});
@@ -400,24 +322,23 @@ module.exports = function(db, opts) {
 
 		ws.on('close', function() {
 			closed = true;
-			change(key);
 		});
 
 		return ws;
 	};
 
 	fs.truncate = function(key, len, cb) {
-		key = normalize(key);
-		cb = once(changeCallback(key, cb));
-
-		get(key, function(err, stat) {
+		ps.follow(key, function(err, stat, key) {
 			if (err) return cb(err);
-			checkParentDirectory(key, function(err) {
-				if (err) return cb(err);
-				if (!len) return bl.remove(key, cb);
 
-				bl.size(key, function(err, size) {
+			bl.size(key, function(err, size) {
+				if (err) return cb(err);
+
+				ps.writable(key, function(err) {
 					if (err) return cb(err);
+
+					cb = once(changeCallback(key, cb));
+					if (!len) return bl.remove(key, cb);
 
 					var ws = bl.createWriteStream(key, {
 						start:size < len ? len-1 : len
@@ -435,7 +356,7 @@ module.exports = function(db, opts) {
 
 	fs.watchFile = function(key, opts, cb) {
 		if (typeof opts === 'function') return fs.watchFile(key, null, opts);
-		key = normalize(key);
+		key = ps.normalize(key);
 
 		if (!listeners[key]) {
 			listeners[key] = new events.EventEmitter();
@@ -447,6 +368,7 @@ module.exports = function(db, opts) {
 	};
 
 	fs.unwatchFile = function(key, cb) {
+		key = ps.normalize(key);
 		if (!listeners[key]) return;
 		if (cb) listeners[key].removeListener('change', cb);
 		else listeners[key].removeAllListeners('change');
@@ -454,6 +376,7 @@ module.exports = function(db, opts) {
 	};
 
 	fs.watch = function(key, opts, cb) {
+		key = ps.normalize(key);
 		var watcher = new events.EventEmitter();
 		var onchange = function() {
 			watcher.emit('change', 'change', key);
@@ -469,50 +392,54 @@ module.exports = function(db, opts) {
 
 	fs.open = function(key, flags, mode, cb) {
 		if (typeof mode === 'function') return fs.open(key, flags, null, mode);
-		key = normalize(key);
 
-		var fl = flags[0];
-		var plus = flags[1] === '+' || flags[2] === '+';
-
-		var f = {
-			key: key,
-			mode: mode || 0666,
-			readable: fl === 'r' || ((fl === 'w' || fl === 'a') && plus),
-			writable: fl === 'w' || fl === 'a' || (fl === 'r' && plus),
-			append: fl === 'a'
-		};
-
-		fs.stat(key, function(err, stat) {
+		ps.follow(key, function(err, stat, key) {
 			if (err && err.code !== 'ENOENT') return cb(err);
+
+			var fl = flags[0];
+			var plus = flags[1] === '+' || flags[2] === '+';
+
+			var f = {
+				key: key,
+				mode: mode || 0666,
+				readable: fl === 'r' || ((fl === 'w' || fl === 'a') && plus),
+				writable: fl === 'w' || fl === 'a' || (fl === 'r' && plus),
+				append: fl === 'a'
+			};
+
 			if (fl === 'r' && err) return cb(err);
 			if (flags[1] === 'x' && stat) return cb(errno.EEXIST(key));
-			if (stat && stat.isDirectory()) return cb(errno.EISDIR(key)); // not strictly fs... TODO: fix?
+			if (stat && stat.isDirectory()) return cb(errno.EISDIR(key));
 
-			if (f.append && stat) f.writePos = stat.size;
-
-			checkParentDirectory(key, function(err) {
+			bl.size(key, function(err, size) {
 				if (err) return cb(err);
 
-				var onready = function(err) {
+				if (f.append) f.writePos = size;
+
+				ps.writable(key, function(err) {
 					if (err) return cb(err);
 
-					var i = fds.indexOf(null);
-					if (i === -1) i = 10+fds.push(fds.length+10)-1;
+					var onready = function(err) {
+						if (err) return cb(err);
 
-					f.fd = i;
-					fds[i] = f;
+						var i = fds.indexOf(null);
+						if (i === -1) i = 10+fds.push(fds.length+10)-1;
 
-					cb(null, f.fd);
-				};
+						f.fd = i;
+						fds[i] = f;
 
-				var ontruncate = function(err) {
-					if (err) return cb(err);
-					if (stat) return onready();
-					put(key, {type:'file'}, onready);
-				};
+						cb(null, f.fd);
+					};
 
-				if (!f.append && f.writable) return bl.remove(key, ontruncate);
-				ontruncate();
+					var ontruncate = function(err) {
+						if (err) return cb(err);
+						if (stat) return onready();
+						ps.put(key, {ctime:stat && stat.ctime, type:'file'}, onready);
+					};
+
+					if (!f.append && f.writable) return bl.remove(key, ontruncate);
+					ontruncate();
+				});
 			});
 		});
 	};
@@ -521,9 +448,8 @@ module.exports = function(db, opts) {
 		var f = fds[fd];
 		if (!f) return nextTick(cb, errno.EBADF());
 
-		cb = changeCallback(f.key, cb);
 		fds[fd] = null;
-		nextTick(cb);
+		nextTick(changeCallback(f.key, cb));
 	};
 
 	fs.write = function(fd, buf, off, len, pos, cb) {
