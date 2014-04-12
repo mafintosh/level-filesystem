@@ -1,4 +1,5 @@
 var path = require('path');
+var events = require('events');
 var concat = require('concat-stream');
 var fwd = require('fwd-stream');
 var sublevel = require('level-sublevel');
@@ -40,6 +41,18 @@ module.exports = function(db, opts) {
 
 	var stats = db.sublevel('stats');
 	var bl = blobs(db.sublevel('blobs'), opts);
+	var listeners = {};
+
+	var change = function(key) {
+		if (listeners[key]) listeners[key].emit('change');
+	};
+
+	var changeCallback = function(key, cb) {
+		return function(err, val) {
+			change(key);
+			if (cb) cb(err, val);
+		};
+	};
 
 	var get = function(key, cb) {
 		if (key === '/') return nextTick(cb, null, ROOT);
@@ -73,6 +86,7 @@ module.exports = function(db, opts) {
 		if (!mode) mode = 0777;
 		if (!cb) cb = noop;
 		key = normalize(key);
+		cb = changeCallback(key, cb);
 
 		get(key, function(err, entry) {
 			if (err && err.code !== 'ENOENT') return cb(err);
@@ -93,6 +107,7 @@ module.exports = function(db, opts) {
 	fs.rmdir = function(key, cb) {
 		if (!cb) cb = noop;
 		key = normalize(key);
+		cb = changeCallback(key, cb);
 
 		fs.readdir(key, function(err, files) {
 			if (err) return cb(err);
@@ -148,6 +163,7 @@ module.exports = function(db, opts) {
 	fs.chmod = function(key, mode, cb) {
 		if (!cb) cb = noop;
 		key = normalize(key);
+		cb = changeCallback(key, cb);
 
 		fs.stat(key, function(err) {
 			if (err) return cb(err);
@@ -159,6 +175,7 @@ module.exports = function(db, opts) {
 	fs.chown = function(key, uid, gid, cb) {
 		if (!cb) cb = noop;
 		key = normalize(key);
+		cb = changeCallback(key, cb);
 
 		fs.stat(key, function(err) {
 			if (err) return cb(err);
@@ -171,6 +188,7 @@ module.exports = function(db, opts) {
 	fs.utimes = function(key, atime, mtime, cb) {
 		if (!cb) cb = noop;
 		key = normalize(key);
+		cb = changeCallback(key, cb);
 
 		fs.stat(key, function(err) {
 			if (err) return cb(err);
@@ -184,6 +202,7 @@ module.exports = function(db, opts) {
 		if (!cb) cb = noop;
 		from = normalize(from);
 		to = normalize(to);
+		cb = changeCallback(to, changeCallback(from, cb));
 
 		get(from, function(err, statFrom) {
 			if (err) return cb(err);
@@ -225,6 +244,7 @@ module.exports = function(db, opts) {
 		if (!opts) opts = {};
 		if (!cb) cb = noop;
 		key = normalize(key);
+		cb = changeCallback(key, cb);
 
 		if (!Buffer.isBuffer(data)) data = new Buffer(data, opts.encoding || 'utf-8');
 
@@ -265,6 +285,7 @@ module.exports = function(db, opts) {
 	fs.unlink = function(key, cb) {
 		if (!cb) cb = noop;
 		key = normalize(key);
+		cb = changeCallback(key, cb);
 
 		get(key, function(err, stat) {
 			if (err) return cb(err);
@@ -301,14 +322,29 @@ module.exports = function(db, opts) {
 		if (!opts) opts = {};
 		key = normalize(key);
 
+		var closed = false;
+
 		var rs = fwd.readable(function(cb) {
 			get(key, function(err, stat) {
 				if (err) return cb(err);
 				if (stat.isDirectory()) return cb(errno.EISDIR(key));
 
+				var r = bl.createReadStream(key, opts);
+
 				rs.emit('open');
-				cb(null, bl.createReadStream(key, opts));
+				r.on('end', function() {
+					process.nextTick(function() {
+						if (!closed) rs.emit('close');
+					});
+				});
+
+				cb(null, r);
 			});
+		});
+
+		rs.on('close', function() {
+			closed = true;
+			change(key);
 		});
 
 		return rs;
@@ -319,6 +355,7 @@ module.exports = function(db, opts) {
 		key = normalize(key);
 
 		var flags = opts.flags || 'w';
+		var closed = false;
 
 		opts.append = flags[0] === 'a';
 
@@ -339,11 +376,24 @@ module.exports = function(db, opts) {
 					}, function(err) {
 						if (err) return cb(err);
 
+						var w = bl.createWriteStream(key, opts);
+
 						ws.emit('open');
-						cb(null, bl.createWriteStream(key, opts));
+						w.on('finish', function() {
+							process.nextTick(function() {
+								if (!closed) ws.emit('close');
+							});
+						});
+
+						cb(null, w);
 					});
 				});
 			});
+		});
+
+		ws.on('close', function() {
+			closed = true;
+			change(key);
 		});
 
 		return ws;
@@ -351,7 +401,7 @@ module.exports = function(db, opts) {
 
 	fs.truncate = function(key, len, cb) {
 		key = normalize(key);
-		cb = once(cb || noop);
+		cb = once(changeCallback(key, cb));
 
 		get(key, function(err, stat) {
 			if (err) return cb(err);
@@ -374,6 +424,40 @@ module.exports = function(db, opts) {
 				});
 			});
 		});
+	};
+
+	fs.watchFile = function(key, opts, cb) {
+		if (typeof opts === 'function') return fs.watchFile(key, null, opts);
+		key = normalize(key);
+
+		if (!listeners[key]) {
+			listeners[key] = new events.EventEmitter();
+			listeners[key].setMaxListeners(0);
+		}
+
+		if (cb) listeners[key].on('change', cb);
+		return listeners[key];
+	};
+
+	fs.unwatchFile = function(key, cb) {
+		if (!listeners[key]) return;
+		if (cb) listeners[key].removeListener('change', cb);
+		else listeners[key].removeAllListeners('change');
+		if (!listeners[key].listeners('change').length) delete listeners[key];;
+	};
+
+	fs.watch = function(key, opts, cb) {
+		var watcher = new events.EventEmitter();
+		var onchange = function() {
+			watcher.emit('change', 'change', key);
+		};
+
+		fs.watchFile(key, onchange);
+		watcher.close = function() {
+			fs.unwatchFile(key, onchange);
+		};
+
+		return watcher;
 	};
 
 	return fs;
