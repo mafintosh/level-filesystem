@@ -19,9 +19,8 @@ module.exports = function(db, opts) {
 
 	db = sublevel(db);
 
-	var stats = db.sublevel('stats');
 	var bl = blobs(db.sublevel('blobs'), opts);
-	var ps = paths(stats);
+	var ps = paths(db.sublevel('stats'));
 	var listeners = watchers();
 	var fds = [];
 
@@ -64,10 +63,10 @@ module.exports = function(db, opts) {
 		});
 	};
 
-	fs.stat = function(key, cb) {
-		ps.follow(key, function(err, stat, key) {
+	var stat = function(key, lookup, cb) {
+		lookup(key, function(err, stat, key) {
 			if (err) return cb(err);
-			if (stat.size) return cb(null, stat);
+			if (!stat.isFile()) return cb(null, stat);
 			bl.size(key, function(err, size) {
 				if (err) return cb(err);
 				stat.size = size;
@@ -76,26 +75,50 @@ module.exports = function(db, opts) {
 		});
 	};
 
+	fs.stat = function(key, cb) {
+		stat(key, ps.follow, cb);
+	};
+
+	fs.lstat = function(key, cb) {
+		stat(key, ps.get, cb);
+	};
+
 	fs.exists = function(key, cb) {
 		ps.follow(key, function(err) {
 			cb(!err);
 		});
 	};
 
-	fs.chmod = function(key, mode, cb) {
+	var chmod = function(key, lookup, mode, cb) {
 		if (!cb) cb = noop;
-		ps.follow(key, function(err, stat, key) {
+		lookup(key, function(err, stat, key) {
 			if (err) return cb(err);
 			ps.update(key, {mode:mode}, listeners.cb(key, cb));
 		});
 	};
 
-	fs.chown = function(key, uid, gid, cb) {
+	fs.chmod = function(key, mode, cb) {
+		chmod(key, ps.follow, mode, cb);
+	};
+
+	fs.lchmod = function(key, mode, cb) {
+		chmod(key, ps.get, mode, cb);
+	};
+
+	var chown = function(key, lookup, uid, gid, cb) {
 		if (!cb) cb = noop;
-		ps.follow(key, function(err, stat, key) {
+		lookup(key, function(err, stat, key) {
 			if (err) return cb(err);
 			ps.update(key, {uid:uid, gid:gid}, listeners.cb(key, cb));
 		});
+	};
+
+	fs.chown = function(key, uid, gid, cb) {
+		chown(key, ps.follow, uid, gid, cb);
+	};
+
+	fs.lchown = function(key, uid, gid, cb) {
+		chown(key, ps.get, uid, gid, cb);
 	};
 
 	fs.utimes = function(key, atime, mtime, cb) {
@@ -168,6 +191,7 @@ module.exports = function(db, opts) {
 
 			ps.writable(key, function(err) {
 				if (err) return cb(err);
+
 				bl.write(key, data, opts, function(err) {
 					if (err) return cb(err);
 
@@ -200,7 +224,11 @@ module.exports = function(db, opts) {
 
 			bl.remove(key, function(err) {
 				if (err) return cb(err);
-				ps.del(key, listeners.cb(key, cb));
+				ps.del(key, listeners.cb(key, function(err) {
+					if (err) return cb(err);
+					if (stat.target && stat.type === 'link') return that.unlink(stat.target, cb);
+					cb();
+				}));
 			});
 		});
 	};
@@ -411,7 +439,6 @@ module.exports = function(db, opts) {
 
 	fs.write = function(fd, buf, off, len, pos, cb) {
 		var f = fds[fd];
-
 		if (!cb) cb = noop;
 		if (!f || !f.writable) return nextTick(cb, errno.EBADF());
 
@@ -428,7 +455,6 @@ module.exports = function(db, opts) {
 
 	fs.read = function(fd, buf, off, len, pos, cb) {
 		var f = fds[fd];
-
 		if (!cb) cb = noop;
 		if (!f || !f.readable) return nextTick(cb, errno.EBADF());
 
@@ -445,26 +471,64 @@ module.exports = function(db, opts) {
 
 	fs.fsync = function(fd, cb) {
 		var f = fds[fd];
-
 		if (!cb) cb = noop;
 		if (!f || !f.writable) return nextTick(cb, errno.EBADF());
 
 		nextTick(cb);
 	};
 
-	['ftruncate', 'fchown', 'futimes', 'fstat', 'fchmod'].forEach(function(method) {
-		var mirror = method.slice(1);
-		fs[method] = function(fd) {
-			var f = fds[fd];
-			var cb = arguments[arguments.length-1];
+	fs.ftruncate = function(fd, len, cb) {
+		var f = fds[fd];
+		if (!cb) cb = noop;
+		if (!f) return nextTick(cb, errno.EBADF());
 
-			if (typeof cb !== 'function') cb = noop;
-			if (!f) return nextTick(cb, errno.EBADF());
+		fs.truncate(f.key, len, cb);
+	};
 
-			fd = f.key;
-			fs[mirror].apply(fs, arguments);
-		};
-	});
+	fs.fchown = function(fd, uid, gid, cb) {
+		var f = fds[fd];
+		if (!cb) cb = noop;
+		if (!f) return nextTick(cb, errno.EBADF());
+
+		fs.chown(f.key, uid, gid, cb);
+	};
+
+	fs.fchmod = function(fd, mode, cb) {
+		var f = fds[fd];
+		if (!cb) cb = noop;
+		if (!f) return nextTick(cb, errno.EBADF());
+
+		fs.chmod(f.key, mode, cb);
+	};
+
+	fs.futimes = function(fd, atime, mtime, cb) {
+		var f = fds[fd];
+		if (!cb) cb = noop;
+		if (!f) return nextTick(cb, errno.EBADF());
+
+		fs.utimes(f.key, atime, mtime, cb);
+	};
+
+	fs.fstat = function(fd, cb) {
+		var f = fds[fd];
+		if (!f) return nextTick(cb, errno.EBADF());
+
+		fs.stat(f.key, cb);
+	};
+
+	fs.symlink = function(target, name, cb) {
+		if (!cb) cb = noop;
+		ps.follow(target, function(err, stat, target) {
+			if (err) return cb(err);
+			ps.get(name, function(err, stat) {
+				if (err && err.code !== 'ENOENT') return cb(err);
+				if (stat) return cb(errno.EEXIST(name));
+				ps.put(name, {type:'symlink', target:target, mode:0777}, cb);
+			});
+		});
+	};
+
+
 
 	return fs;
 };
