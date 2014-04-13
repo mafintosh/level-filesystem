@@ -87,14 +87,14 @@ fs.mkdir('/hello', function() {
 ✓ fs.ftruncate(fd, len, callback)
 ✓ fs.fchmod(fd, mode, callback)
 ✓ fs.fstat(fd, callback)
+✓ fs.lchown(path, uid, gid, callback)
+✓ fs.lchmod(path, mode, callback)
+✓ fs.symlink(srcpath, dstpath, [type], callback)
+✓ fs.lstat(path, callback)
 
 // pending
 
-fs.lchown(path, uid, gid, callback)
-fs.lchmod(path, mode, callback)
-fs.lstat(path, callback)
 fs.link(srcpath, dstpath, callback)
-fs.symlink(srcpath, dstpath, [type], callback)
 fs.readlink(path, callback)
 ```
 
