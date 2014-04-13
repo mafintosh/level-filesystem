@@ -13,6 +13,7 @@ var Stat = function(opts) {
 	this.atime = toDate(opts.atime);
 	this.ctime = toDate(opts.ctime);
 	this.type = opts.type;
+	this.target = opts.target;
 };
 
 Stat.prototype.isDirectory = function() {
@@ -32,7 +33,7 @@ Stat.prototype.isCharacterDevice = function() {
 };
 
 Stat.prototype.isSymbolicLink = function() {
-	return false;
+	return this.type === 'symlink';
 };
 
 Stat.prototype.isFIFO = function() {
