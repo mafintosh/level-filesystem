@@ -9,7 +9,8 @@
     "concat-stream": "^1.4.4",
     "level-sublevel": "^5.2.0",
     "level-blobs": "^0.1.2",
-    "fwd-stream": "^1.0.4"
+    "fwd-stream": "^1.0.4",
+    "xtend": "^2.2.0"
   },
   "devDependencies": {
     "memdb": "^0.1.0",
