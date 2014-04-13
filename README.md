@@ -91,11 +91,11 @@ fs.mkdir('/hello', function() {
 ✓ fs.lchmod(path, mode, callback)
 ✓ fs.symlink(srcpath, dstpath, [type], callback)
 ✓ fs.lstat(path, callback)
+✓ fs.readlink(path, callback)
 
 // pending
 
 fs.link(srcpath, dstpath, callback)
-fs.readlink(path, callback)
 ```
 
 ## License
