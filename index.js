@@ -528,7 +528,13 @@ module.exports = function(db, opts) {
 		});
 	};
 
-
+	fs.readlink = function(key, cb) {
+		ps.get(key, function(err, stat) {
+			if (err) return cb(err);
+			if (!stat.target) return cb(errno.EINVAL(key));
+			cb(null, stat.target);
+		});
+	};
 
 	return fs;
 };
