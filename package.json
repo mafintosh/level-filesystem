@@ -24,7 +24,6 @@
     "test": "tape test/*.js"
   },
   "testling": {
-    "preprocess": "./node_modules/.bin/browserify test/*.js",
 	"files": "test/*.js",
     "browsers": [
       "ie/8..latest",
