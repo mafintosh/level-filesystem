@@ -1,6 +1,6 @@
 # level-filesystem
 
-A full implementation of the fs module in leveldb (except sync ops)
+Full implementation of the fs module on top of leveldb (except sync ops)
 
 	npm install level-filesystem
 
