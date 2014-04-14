@@ -1,6 +1,7 @@
 var fwd = require('fwd-stream');
 var sublevel = require('level-sublevel');
 var blobs = require('level-blobs');
+var peek = require('level-peek');
 var once = require('once');
 var errno = require('./errno');
 var paths = require('./paths');
@@ -21,8 +22,15 @@ module.exports = function(db, opts) {
 
 	var bl = blobs(db.sublevel('blobs'), opts);
 	var ps = paths(db.sublevel('stats'));
+	var links = db.sublevel('links');
+
 	var listeners = watchers();
 	var fds = [];
+
+	var now = Date.now();
+	var inc = function() {
+		return ++now;
+	};
 
 	fs.mkdir = function(key, mode, cb) {
 		if (typeof mode === 'function') return fs.mkdir(key, null, mode);
@@ -67,7 +75,8 @@ module.exports = function(db, opts) {
 		lookup(key, function(err, stat, key) {
 			if (err) return cb(err);
 			if (!stat.isFile()) return cb(null, stat);
-			bl.size(key, function(err, size) {
+			var blob = stat && stat.blob || key;
+			bl.size(blob, function(err, size) {
 				if (err) return cb(err);
 				stat.size = size;
 				cb(null, stat);
@@ -189,10 +198,11 @@ module.exports = function(db, opts) {
 			if (stat && stat.isDirectory()) return cb(errno.EISDIR(key));
 			if (stat && flags[1] === 'x') return cb(errno.EEXIST(key));
 
+			var blob = stat && stat.blob || key;
 			ps.writable(key, function(err) {
 				if (err) return cb(err);
 
-				bl.write(key, data, opts, function(err) {
+				bl.write(blob, data, opts, function(err) {
 					if (err) return cb(err);
 
 					ps.put(key, {
@@ -222,14 +232,29 @@ module.exports = function(db, opts) {
 			if (err) return cb(err);
 			if (stat.isDirectory()) return cb(errno.EISDIR(key));
 
-			bl.remove(key, function(err) {
-				if (err) return cb(err);
-				ps.del(key, listeners.cb(key, function(err) {
-					if (err) return cb(err);
-					if (stat.target && stat.type === 'link') return that.unlink(stat.target, cb);
+			var clean = function(target) {
+				peek(links, {start:target+'\xff', end:target+'\xff\xff'}, function(err) {
+					if (err) return bl.remove(target, cb); // no more links
 					cb();
-				}));
-			});
+				});
+			};
+
+			var onlink = function() {
+				var target = stat.link.slice(0, stat.link.indexOf('\xff'));
+				links.del(stat.link, function(err) {
+					if (err) return cb(err);
+					clean(target);
+				});
+			};
+
+			ps.del(key, listeners.cb(key, function(err) {
+				if (err) return cb(err);
+				if (stat.link) return onlink();
+				links.del(key+'\xff', function(err) {
+					if (err) return cb(err);
+					clean(key);
+				});
+			}));
 		});
 	};
 
@@ -245,7 +270,8 @@ module.exports = function(db, opts) {
 			if (err) return cb(err);
 			if (stat.isDirectory()) return cb(errno.EISDIR(key));
 
-			bl.read(key, function(err, data) {
+			var blob = stat && stat.blob || key;
+			bl.read(blob, function(err, data) {
 				if (err) return cb(err);
 				cb(null, opts.encoding ? data.toString(opts.encoding) : data);
 			});
@@ -261,7 +287,8 @@ module.exports = function(db, opts) {
 				if (err) return cb(err);
 				if (stat.isDirectory()) return cb(errno.EISDIR(key));
 
-				var r = bl.createReadStream(key, opts);
+				var blob = stat && stat.blob || key;
+				var r = bl.createReadStream(blob, opts);
 
 				rs.emit('open');
 				r.on('end', function() {
@@ -296,7 +323,8 @@ module.exports = function(db, opts) {
 				if (stat && stat.isDirectory()) return cb(errno.EISDIR(key));
 				if (stat && flags[1] === 'x') return cb(errno.EEXIST(key));
 
-				ps.writable(key, function(err) {
+				var blob = stat && stat.blob || key;
+				ps.writable(blob, function(err) {
 					if (err) return cb(err);
 
 					var ctime = stat ? stat.ctime : new Date();
@@ -310,7 +338,7 @@ module.exports = function(db, opts) {
 					ps.put(key, s, function(err) {
 						if (err) return cb(err);
 
-						var w = bl.createWriteStream(key, opts);
+						var w = bl.createWriteStream(blob, opts);
 
 						ws.emit('open');
 						w.on('finish', function() {
@@ -338,16 +366,17 @@ module.exports = function(db, opts) {
 		ps.follow(key, function(err, stat, key) {
 			if (err) return cb(err);
 
-			bl.size(key, function(err, size) {
+			var blob = stat && stat.blob || key;
+			bl.size(blob, function(err, size) {
 				if (err) return cb(err);
 
 				ps.writable(key, function(err) {
 					if (err) return cb(err);
 
 					cb = once(listeners.cb(key, cb));
-					if (!len) return bl.remove(key, cb);
+					if (!len) return bl.remove(blob, cb);
 
-					var ws = bl.createWriteStream(key, {
+					var ws = bl.createWriteStream(blob, {
 						start:size < len ? len-1 : len
 					});
 
@@ -382,9 +411,11 @@ module.exports = function(db, opts) {
 
 			var fl = flags[0];
 			var plus = flags[1] === '+' || flags[2] === '+';
+			var blob = stat && stat.blob || key;
 
 			var f = {
 				key: key,
+				blob: blob,
 				mode: mode || 0666,
 				readable: fl === 'r' || ((fl === 'w' || fl === 'a') && plus),
 				writable: fl === 'w' || fl === 'a' || (fl === 'r' && plus),
@@ -395,7 +426,7 @@ module.exports = function(db, opts) {
 			if (flags[1] === 'x' && stat) return cb(errno.EEXIST(key));
 			if (stat && stat.isDirectory()) return cb(errno.EISDIR(key));
 
-			bl.size(key, function(err, size) {
+			bl.size(blob, function(err, size) {
 				if (err) return cb(err);
 
 				if (f.append) f.writePos = size;
@@ -419,10 +450,10 @@ module.exports = function(db, opts) {
 					var ontruncate = function(err) {
 						if (err) return cb(err);
 						if (stat) return onready();
-						ps.put(key, {ctime:stat && stat.ctime, type:'file'}, onready);
+						ps.put(blob, {ctime:stat && stat.ctime, type:'file'}, onready);
 					};
 
-					if (!f.append && f.writable) return bl.remove(key, ontruncate);
+					if (!f.append && f.writable) return bl.remove(blob, ontruncate);
 					ontruncate();
 				});
 			});
@@ -447,7 +478,7 @@ module.exports = function(db, opts) {
 		var slice = buf.slice(off, off+len);
 		f.writePos = pos + slice.length;
 
-		bl.write(f.key, slice, {start:pos, append:true}, function(err) {
+		bl.write(f.blob, slice, {start:pos, append:true}, function(err) {
 			if (err) return cb(err);
 			cb(null, len, buf);
 		});
@@ -460,7 +491,7 @@ module.exports = function(db, opts) {
 
 		if (pos === null) pos = fs.readPos || 0;
 
-		bl.read(f.key, {start:pos, end:pos+len-1}, function(err, read) {
+		bl.read(f.blob, {start:pos, end:pos+len-1}, function(err, read) {
 			if (err) return cb(err);
 			var slice = read.slice(0, len);
 			slice.copy(buf, off);
@@ -482,7 +513,7 @@ module.exports = function(db, opts) {
 		if (!cb) cb = noop;
 		if (!f) return nextTick(cb, errno.EBADF());
 
-		fs.truncate(f.key, len, cb);
+		fs.truncate(f.blob, len, cb);
 	};
 
 	fs.fchown = function(fd, uid, gid, cb) {
@@ -533,6 +564,26 @@ module.exports = function(db, opts) {
 			if (err) return cb(err);
 			if (!stat.target) return cb(errno.EINVAL(key));
 			cb(null, stat.target);
+		});
+	};
+
+	fs.link = function(target, name, cb) {
+		if (!cb) cb = noop;
+		ps.follow(target, function(err, stat, target) {
+			if (err) return cb(err);
+			if (!stat.isFile()) return cb(errno.EINVAL(target));
+			ps.get(name, function(err, st) {
+				if (err && err.code !== 'ENOENT') return cb(err);
+				if (st) return cb(errno.EEXIST(name));
+				var link = target+'\xff'+inc();
+				links.put(target+'\xff', target, function(err) {
+					if (err) return cb(err);
+					links.put(link, target, function(err) {
+						if (err) return cb(err);
+						ps.put(name, {type:'file', link:link, blob:target, mode:stat.mode}, cb);
+					});
+				});
+			});
 		});
 	};
 
