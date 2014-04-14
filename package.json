@@ -1,6 +1,6 @@
 {
   "name": "level-filesystem",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Full implementation of the fs module on top of leveldb",
   "repository": "git://github.com:mafintosh/level-filesystem.git",
   "dependencies": {
@@ -21,12 +21,12 @@
     "browserify": "3.32.1"
   },
   "keywords": [
-	"leveldb",
-	"level",
-	"filesystem",
-	"fs",
-	"file",
-	"replacement"
+    "leveldb",
+    "level",
+    "filesystem",
+    "fs",
+    "file",
+    "replacement"
   ],
   "scripts": {
     "test": "tape test/*.js"
