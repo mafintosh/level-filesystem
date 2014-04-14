@@ -20,16 +20,33 @@ test('writeFile + encoding', function(fs, t) {
 		t.notOk(err);
 		fs.readFile('/foo', function(err, data) {
 			t.same(data.toString(), 'foo');
-			fs.writeFile('/foo', 'fafafa', 'hex', function(err) {
+			fs.writeFile('/foo', '68656c6c6f', 'hex', function(err) {
 				t.notOk(err);
 				fs.readFile('/foo', function(err, data) {
-					t.same(data.toString('hex'), 'fafafa');
+					t.same(data.toString(), 'hello');
 					t.end();
 				});
 			});
 		});
 	});
 });
+
+test('multiple writeFile', function(fs, t) {
+	fs.writeFile('/foo', new Buffer('foo'), function(err) {
+		t.notOk(err);
+		fs.writeFile('/foo', new Buffer('bar'), function(err) {
+			t.notOk(err);
+			fs.writeFile('/foo', new Buffer('baz'), function(err) {
+				t.notOk(err);
+				fs.readFile('/foo', function(err, data) {
+					t.same(data.toString(), 'baz');
+					t.end();
+				});
+			});
+		});
+	});
+});
+
 
 test('writeFile + mode', function(fs, t) {
 	fs.writeFile('/foo', new Buffer('foo'), {mode:0644}, function(err) {
