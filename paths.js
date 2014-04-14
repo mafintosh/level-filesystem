@@ -69,7 +69,7 @@ module.exports = function(db) {
 	that.follow = function(key, cb) {
 		that.get(key, function loop(err, doc, key) {
 			if (err) return cb(err, null, key);
-			if (doc.target && (doc.type === 'link' || doc.type === 'symlink')) return that.get(doc.target, loop);
+			if (doc.target) return that.get(doc.target, loop);
 			cb(null, stat(doc), key);
 		})
 	};
