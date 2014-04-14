@@ -64,9 +64,9 @@ var fs = filesystem(db); // where db is a levelup instance
 
 fs.mkdir('/hello', function(err) {
 	if (err) throw err;
-	fs.writeFile('/hello', 'world', function(err) {
+	fs.writeFile('/hello/world.txt', 'world', function(err) {
 		if (err) throw err;
-		fs.readFile('/hello', 'utf-8', function(err, data) {
+		fs.readFile('/hello/world.txt', 'utf-8', function(err, data) {
 			console.log(data);
 		});
 	});
