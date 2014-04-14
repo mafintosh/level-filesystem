@@ -14,6 +14,8 @@ var Stat = function(opts) {
 	this.ctime = toDate(opts.ctime);
 	this.type = opts.type;
 	this.target = opts.target;
+	this.link = opts.link;
+	this.blob = opts.blob;
 };
 
 Stat.prototype.isDirectory = function() {
