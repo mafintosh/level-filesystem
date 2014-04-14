@@ -1,9 +1,10 @@
 var filesystem = require('../../');
 var test = require('tape');
-var memdb = require('memdb');
+var levelup = require('levelup');
+var memdown = require('memdown');
 
 var reset = function() {
-	return filesystem(memdb());
+	return filesystem(levelup('memdb', {db:memdown}));
 };
 
 module.exports = function(name, fn) {

@@ -15,13 +15,16 @@
   },
   "devDependencies": {
     "memdb": "^0.1.0",
-    "tape": "^2.12.0"
+    "tape": "^2.12.0",
+    "memdown": "git://github.com/maxogden/memdown",
+    "levelup": "^0.18.2",
+    "browserify": "3.32.1"
   },
   "scripts": {
     "test": "tape test/*.js"
   },
   "testling": {
-    "files": "test/*.js",
+    "preprocess": "./node_modules/.bin/browserify test/*.js",
     "browsers": [
       "ie/8..latest",
       "firefox/17..latest",
