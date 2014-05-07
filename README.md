@@ -4,7 +4,9 @@ Full implementation of the fs module on top of leveldb (except sync ops)
 
 	npm install level-filesystem
 
-[![build status](https://secure.travis-ci.org/mafintosh/level-filesystem.png)](http://travis-ci.org/mafintosh/level-filesystem)
+[![build status](http://img.shields.io/travis/mafintosh/level-filesystem.svg?style=flat)](http://travis-ci.org/mafintosh/level-filesystem)
+![dat](http://img.shields.io/badge/Development%20sponsored%20by-dat-green.svg?style=flat)
+
 
 [![browser support](https://ci.testling.com/mafintosh/level-filesystem.png)
 ](https://ci.testling.com/mafintosh/level-filesystem)
