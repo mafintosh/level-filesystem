@@ -66,12 +66,28 @@ module.exports = function(db) {
 		}));
 	};
 
+	var resolve = function(dir, cb) {
+		var root = '/';
+		var parts = dir.split('/').slice(1);
+
+		var loop = function() {
+			that.get(path.join(root, parts.shift()), function(err, doc, key) {
+				if (err) return cb(err, doc, dir);
+				root = doc.target || key;
+				if (!parts.length) return cb(null, doc, key);
+				loop();
+			});
+		};
+
+		loop();
+	};
+
 	that.follow = function(key, cb) {
-		that.get(key, function loop(err, doc, key) {
+		resolve(normalize(key), function loop(err, doc, key) {
 			if (err) return cb(err, null, key);
 			if (doc.target) return that.get(doc.target, loop);
 			cb(null, stat(doc), key);
-		})
+		});
 	};
 
 	that.update = function(key, opts, cb) {
