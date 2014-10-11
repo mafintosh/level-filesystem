@@ -400,8 +400,13 @@ module.exports = function(db, opts) {
 	};
 
 	fs.watch = function(key, opts, cb) {
+		if (typeof opts === 'function') return fs.watch(key, null, opts)
 		return listeners.watcher(ps.normalize(key), cb);
 	};
+
+	fs.notify = function(cb) {
+		listeners.on('change', cb)
+	}
 
 	fs.open = function(key, flags, mode, cb) {
 		if (typeof mode === 'function') return fs.open(key, flags, null, mode);

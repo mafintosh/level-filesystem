@@ -2,7 +2,7 @@ var events = require('events');
 
 module.exports = function() {
 	var listeners = {};
-	var that = {};
+	var that = new events.EventEmitter();
 
 	that.watch = function(key, cb) {
 		if (!listeners[key]) {
@@ -38,6 +38,7 @@ module.exports = function() {
 
 	that.change = function(key) {
 		if (listeners[key]) listeners[key].emit('change');
+		that.emit('change', key);
 	};
 
 	that.cb = function(key, cb) {
