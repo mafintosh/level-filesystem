@@ -17,6 +17,22 @@ test('symlink', function(fs, t) {
 	});
 });
 
+test('symlink parent', function(fs, t) {
+	fs.mkdir('/hello', function() {
+		fs.writeFile('/hello/world.txt', 'hello', function(err) {
+			t.ok(!err)
+			fs.symlink('/hello', '/hi', function(err) {
+				t.ok(!err)
+				fs.readFile('/hi/world.txt', function(err, data) {
+					t.ok(!err)
+					t.same(data.toString(), 'hello')
+					t.end()
+				})
+			})
+		})
+	})
+});
+
 test('symlink unlink', function(fs, t) {
 	fs.writeFile('/test.txt', 'hello', function(err) {
 		fs.symlink('/test.txt', '/foo', function(err) {
