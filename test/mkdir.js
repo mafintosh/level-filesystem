@@ -1,3 +1,4 @@
+var octal = require('octal')
 var test = require('./helpers/test');
 
 test('mkdir', function(fs, t) {
@@ -25,7 +26,7 @@ test('mkdir + stat', function(fs, t) {
 	fs.mkdir('/foo', function() {
 		fs.stat('/foo', function(err, stat) {
 			t.notOk(err);
-			t.same(stat.mode, 0777);
+			t.same(stat.mode, octal(777));
 			t.ok(stat.isDirectory());
 			t.end();
 		});

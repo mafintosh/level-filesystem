@@ -1,13 +1,14 @@
 var path = require('path');
 var once = require('once');
 var concat = require('concat-stream');
+var octal = require('octal')
 var stat = require('./stat');
 var xtend = require('xtend');
 var errno = require('./errno');
 
 var ROOT = stat({
 	type: 'directory',
-	mode: 0777,
+	mode: octal(777),
 	size: 4096
 });
 

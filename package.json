@@ -4,6 +4,7 @@
   "description": "Full implementation of the fs module on top of leveldb",
   "repository": "git://github.com:mafintosh/level-filesystem.git",
   "dependencies": {
+    "octal": "^1.0.0",
     "once": "^1.3.0",
     "errno": "^0.1.1",
     "concat-stream": "^1.4.4",
@@ -18,7 +19,7 @@
     "tape": "^2.12.0",
     "memdown": "git://github.com/maxogden/memdown",
     "levelup": "^0.18.2",
-    "browserify": "3.32.1"
+    "browserify": "^12.0.1"
   },
   "keywords": [
     "leveldb",
