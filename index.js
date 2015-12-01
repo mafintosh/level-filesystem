@@ -3,6 +3,7 @@ var sublevel = require('level-sublevel');
 var blobs = require('level-blobs');
 var peek = require('level-peek');
 var once = require('once');
+var octal = require('octal')
 var errno = require('./errno');
 var paths = require('./paths');
 var watchers = require('./watchers');
@@ -34,7 +35,7 @@ module.exports = function(db, opts) {
 
 	fs.mkdir = function(key, mode, cb) {
 		if (typeof mode === 'function') return fs.mkdir(key, null, mode);
-		if (!mode) mode = 0777;
+		if (!mode) mode = octal(777);
 		if (!cb) cb = noop;
 
 		ps.follow(key, function(err, stat, key) {
@@ -208,7 +209,7 @@ module.exports = function(db, opts) {
 					ps.put(key, {
 						ctime: stat && stat.ctime,
 						mtime: new Date(),
-						mode: opts.mode || 0666,
+						mode: opts.mode || octal(666),
 						type:'file'
 					}, listeners.cb(key, cb));
 				});
@@ -313,7 +314,7 @@ module.exports = function(db, opts) {
 
 		var flags = opts.flags || 'w';
 		var closed = false;
-		var mode = opts.mode || 0666;
+		var mode = opts.mode || octal(666);
 
 		opts.append = flags[0] === 'a';
 
@@ -421,7 +422,7 @@ module.exports = function(db, opts) {
 			var f = {
 				key: key,
 				blob: blob,
-				mode: mode || 0666,
+				mode: mode || octal(666),
 				readable: fl === 'r' || ((fl === 'w' || fl === 'a') && plus),
 				writable: fl === 'w' || fl === 'a' || (fl === 'r' && plus),
 				append: fl === 'a'
@@ -559,7 +560,7 @@ module.exports = function(db, opts) {
 			ps.get(name, function(err, stat) {
 				if (err && err.code !== 'ENOENT') return cb(err);
 				if (stat) return cb(errno.EEXIST(name));
-				ps.put(name, {type:'symlink', target:target, mode:0777}, cb);
+				ps.put(name, {type:'symlink', target:target, mode:octal(777)}, cb);
 			});
 		});
 	};
