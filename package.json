@@ -1,5 +1,5 @@
 {
-  "name": "level-filesystem",
+  "name": "ws-level-filesystem",
   "version": "1.2.1",
   "description": "Full implementation of the fs module on top of leveldb",
   "repository": "git://github.com:mafintosh/level-filesystem.git",
