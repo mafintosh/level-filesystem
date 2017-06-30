@@ -1,3 +1,4 @@
+var path = require('path');
 var fwd = require('fwd-stream');
 var sublevel = require('level-sublevel');
 var blobs = require('level-blobs');
@@ -152,7 +153,34 @@ module.exports = function(db, opts) {
 				cb = listeners.cb(to, listeners.cb(from, cb));
 				ps.put(to, statFrom, function(err) {
 					if (err) return cb(err);
-					ps.del(from, cb);
+                    if (statFrom.isDirectory()) {
+                        fs.readdir(from, function(err, list) {
+                            if (err) return cb(err);
+
+                            cb = (function (cb) {
+                                return function(err) {
+                                    if (err) return cb(err);
+                                    ps.del(from, cb);
+                                };
+                            })(cb);
+
+                            list.forEach(function(item) {
+                                cb = (function(cb) {
+                                    return function(err) {
+                                        item = path.join(from, item);
+
+                                        var newItem = to + item.substring(from.length);
+
+                                        fs.rename(item, newItem, cb)
+                                    };
+                                })(cb);
+                            });
+
+                            cb(null);
+                        })
+                    } else {
+                        ps.del(from, cb);
+                    }
 				});
 			};
 
