@@ -179,7 +179,13 @@ module.exports = function(db, opts) {
                             cb(null);
                         })
                     } else {
-                        ps.del(from, cb);
+                        var p = bl.createReadStream(from, {}).pipe(bl.createWriteStream(to, {}));
+                        p.on('finish', function() {
+                            bl.remove(from, function(err) {
+                                if (err) return cb(err);
+                                ps.del(from, cb);
+                            })
+                        });
                     }
 				});
 			};
