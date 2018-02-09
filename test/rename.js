@@ -52,7 +52,7 @@ test('rename to non empty dir', function(fs, t) {
 test('rename non-empty dir', function(fs, t) {
     fs.mkdir('/foo', function() {
         fs.mkdir('/foo/baz', function() {
-            fs.writeFile('/foo/baz/zip', 'test', (err) => {
+            fs.writeFile('/foo/baz/zip', 'test', function(err) {
                 t.notOk(err);
 
                 fs.rename('/foo', '/bar', function(err) {
