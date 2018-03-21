@@ -1,4 +1,5 @@
 var test = require('./helpers/test');
+var bufferAlloc = require('buffer-alloc');
 
 test('unwatchFile', function(fs, t) {
 	t.plan(1);
@@ -7,7 +8,7 @@ test('unwatchFile', function(fs, t) {
 		t.ok(true);
 	});
 
-	fs.writeFile('/test', new Buffer(1), function() {
+	fs.writeFile('/test', bufferAlloc(1), function() {
 		fs.unwatchFile('/test');
 		fs.truncate('/test', 10000, function() {
 			fs.unlink('/test');

@@ -1,4 +1,5 @@
 var test = require('./helpers/test');
+var bufferFrom = require('buffer-from');
 
 test('writeFile', function(fs, t) {
 	fs.writeFile('/test.txt', 'hello', function(err) {
@@ -16,7 +17,7 @@ test('writeFile', function(fs, t) {
 });
 
 test('writeFile + encoding', function(fs, t) {
-	fs.writeFile('/foo', new Buffer('foo'), function(err) {
+	fs.writeFile('/foo', bufferFrom('foo'), function(err) {
 		t.notOk(err);
 		fs.readFile('/foo', function(err, data) {
 			t.same(data.toString(), 'foo');
@@ -32,11 +33,11 @@ test('writeFile + encoding', function(fs, t) {
 });
 
 test('multiple writeFile', function(fs, t) {
-	fs.writeFile('/foo', new Buffer('foo'), function(err) {
+	fs.writeFile('/foo', bufferFrom('foo'), function(err) {
 		t.notOk(err);
-		fs.writeFile('/foo', new Buffer('bar'), function(err) {
+		fs.writeFile('/foo', bufferFrom('bar'), function(err) {
 			t.notOk(err);
-			fs.writeFile('/foo', new Buffer('baz'), function(err) {
+			fs.writeFile('/foo', bufferFrom('baz'), function(err) {
 				t.notOk(err);
 				fs.readFile('/foo', function(err, data) {
 					t.same(data.toString(), 'baz');
@@ -49,7 +50,7 @@ test('multiple writeFile', function(fs, t) {
 
 
 test('writeFile + mode', function(fs, t) {
-	fs.writeFile('/foo', new Buffer('foo'), {mode:0644}, function(err) {
+	fs.writeFile('/foo', bufferFrom('foo'), {mode:0644}, function(err) {
 		t.notOk(err);
 		fs.stat('/foo', function(err, stat) {
 			t.same(stat.mode, 0644);
