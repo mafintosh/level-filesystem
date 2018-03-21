@@ -7,6 +7,7 @@ var octal = require('octal')
 var errno = require('./errno');
 var paths = require('./paths');
 var watchers = require('./watchers');
+var bufferFrom = require('buffer-from');
 
 var nextTick = function(cb, err, val) {
 	process.nextTick(function() {
@@ -189,7 +190,7 @@ module.exports = function(db, opts) {
 		if (!opts) opts = {};
 		if (!cb) cb = noop;
 
-		if (!Buffer.isBuffer(data)) data = new Buffer(data, opts.encoding || 'utf-8');
+		if (!Buffer.isBuffer(data)) data = bufferFrom(data, opts.encoding || 'utf-8');
 
 		var flags = opts.flags || 'w';
 		opts.append = flags[0] !== 'w';
@@ -384,7 +385,7 @@ module.exports = function(db, opts) {
 					ws.on('error', cb);
 					ws.on('finish', cb);
 
-					if (size < len) ws.write(new Buffer([0]));
+					if (size < len) ws.write(bufferFrom([0]));
 					ws.end();
 				});
 			});

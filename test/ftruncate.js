@@ -1,7 +1,8 @@
 var test = require('./helpers/test');
+var bufferAlloc = require('buffer-alloc');
 
 test('ftruncate', function(fs, t) {
-	fs.writeFile('/test', new Buffer(1), function() {
+	fs.writeFile('/test', bufferAlloc(1), function() {
 		fs.open('/test', 'w', function(err, fd) {
 			fs.ftruncate(fd, 10000, function(err) {
 				fs.fstat(fd, function(err, stat) {

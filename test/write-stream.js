@@ -1,5 +1,6 @@
 var test = require('./helpers/test');
 var concat = require('concat-stream');
+var bufferAlloc = require('buffer-alloc');
 
 test('createWriteStream', function(fs, t) {
 	var ws = fs.createWriteStream('/test.txt');
@@ -21,7 +22,7 @@ test('createWriteStream', function(fs, t) {
 
 test('createWriteStream big', function(fs, t) {
 	var ws = fs.createWriteStream('/test.txt');
-	var big = new Buffer(100 * 1024);
+	var big = bufferAlloc(100 * 1024);
 
 	ws.end(big);
 
