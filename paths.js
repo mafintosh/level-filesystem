@@ -6,6 +6,8 @@ var stat = require('./stat');
 var xtend = require('xtend');
 var errno = require('./errno');
 
+path = path.posix || path;
+
 var ROOT = stat({
 	type: 'directory',
 	mode: octal(777),
