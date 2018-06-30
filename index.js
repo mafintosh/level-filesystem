@@ -234,7 +234,7 @@ module.exports = function(db, opts) {
 			if (stat.isDirectory()) return cb(errno.EISDIR(key));
 
 			var clean = function(target) {
-				peek(links, {start:target+'\xff', end:target+'\xff\xff'}, function(err) {
+				peek.first(links, {start:target+'\xff', end:target+'\xff\xff'}, function(err) {
 					if (err) return bl.remove(target, cb); // no more links
 					cb();
 				});
