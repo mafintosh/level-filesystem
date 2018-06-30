@@ -1,10 +1,12 @@
-var path = require('path').posix;
+var path = require('path');
 var once = require('once');
 var concat = require('concat-stream');
 var octal = require('octal')
 var stat = require('./stat');
 var xtend = require('xtend');
 var errno = require('./errno');
+
+path = path.posix || path;
 
 var ROOT = stat({
 	type: 'directory',
