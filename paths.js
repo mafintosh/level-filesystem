@@ -1,4 +1,4 @@
-var path = require('path');
+var path = require('path').posix;
 var once = require('once');
 var concat = require('concat-stream');
 var octal = require('octal')
