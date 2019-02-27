@@ -45,12 +45,12 @@ module.exports = function() {
 	that.cb = function(key, cb) {
 		return function(err, val) {
 			if (key) {
-                that.change(key);
+				that.change(key);
 
-                var dirname = path.dirname(key)
+				var dirname = path.dirname(key)
 
-                if (dirname !== key) that.change(dirname);
-            }
+				if (dirname !== key) that.change(dirname);
+			}
 			if (cb) cb(err, val);
 		};
 	};
