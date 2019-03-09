@@ -1,7 +1,8 @@
+var path = require('path');
 var fwd = require('fwd-stream');
 var sublevel = require('level-sublevel');
-var blobs = require('level-blobs');
-var peek = require('level-peek');
+var blobs = require('ws-level-blobs');
+var peek = require('ws-level-peek');
 var once = require('once');
 var octal = require('octal')
 var errno = require('./errno');
@@ -43,7 +44,7 @@ module.exports = function(db, opts) {
 			if (stat) return cb(errno.EEXIST(key));
 
 			ps.put(key, {
-				type:'directory',
+				type: 'directory',
 				mode: mode,
 				size: 4096
 			}, listeners.cb(key, cb));
@@ -103,7 +104,7 @@ module.exports = function(db, opts) {
 		if (!cb) cb = noop;
 		lookup(key, function(err, stat, key) {
 			if (err) return cb(err);
-			ps.update(key, {mode:mode}, listeners.cb(key, cb));
+			ps.update(key, { mode: mode }, listeners.cb(key, cb));
 		});
 	};
 
@@ -119,7 +120,7 @@ module.exports = function(db, opts) {
 		if (!cb) cb = noop;
 		lookup(key, function(err, stat, key) {
 			if (err) return cb(err);
-			ps.update(key, {uid:uid, gid:gid}, listeners.cb(key, cb));
+			ps.update(key, { uid: uid, gid: gid }, listeners.cb(key, cb));
 		});
 	};
 
@@ -152,7 +153,41 @@ module.exports = function(db, opts) {
 				cb = listeners.cb(to, listeners.cb(from, cb));
 				ps.put(to, statFrom, function(err) {
 					if (err) return cb(err);
-					ps.del(from, cb);
+					if (statFrom.isDirectory()) {
+						fs.readdir(from, function(err, list) {
+							if (err) return cb(err);
+
+							cb = (function(cb) {
+								return function(err) {
+									if (err) return cb(err);
+									ps.del(from, cb);
+								};
+							})(cb);
+
+							list.forEach(function(item) {
+								cb = (function(cb) {
+									return function(err) {
+										item = path.join(from, item);
+
+										var newItem = to + item.substring(from.length);
+
+										fs.rename(item, newItem, cb)
+									};
+								})(cb);
+							});
+
+							cb(null);
+						})
+					}
+					else {
+						var p = bl.createReadStream(from, {}).pipe(bl.createWriteStream(to, {}));
+						p.on('finish', function() {
+							bl.remove(from, function(err) {
+								if (err) return cb(err);
+								ps.del(from, cb);
+							})
+						});
+					}
 				});
 			};
 
@@ -185,11 +220,11 @@ module.exports = function(db, opts) {
 
 	fs.writeFile = function(key, data, opts, cb) {
 		if (typeof opts === 'function') return fs.writeFile(key, data, null, opts);
-		if (typeof opts === 'string') opts = {encoding:opts};
+		if (typeof opts === 'string') opts = { encoding: opts };
 		if (!opts) opts = {};
 		if (!cb) cb = noop;
 
-		if (!Buffer.isBuffer(data)) data = new Buffer(data, opts.encoding || 'utf-8');
+		if (!Buffer.isBuffer(data)) data = Buffer.from(data, opts.encoding || 'utf-8');
 
 		var flags = opts.flags || 'w';
 		opts.append = flags[0] !== 'w';
@@ -210,7 +245,7 @@ module.exports = function(db, opts) {
 						ctime: stat && stat.ctime,
 						mtime: new Date(),
 						mode: opts.mode || octal(666),
-						type:'file'
+						type: 'file'
 					}, listeners.cb(key, cb));
 				});
 			});
@@ -219,7 +254,7 @@ module.exports = function(db, opts) {
 
 	fs.appendFile = function(key, data, opts, cb) {
 		if (typeof opts === 'function') return fs.appendFile(key, data, null, opts);
-		if (typeof opts === 'string') opts = {encoding:opts};
+		if (typeof opts === 'string') opts = { encoding: opts };
 		if (!opts) opts = {};
 
 		opts.flags = 'a';
@@ -234,7 +269,7 @@ module.exports = function(db, opts) {
 			if (stat.isDirectory()) return cb(errno.EISDIR(key));
 
 			var clean = function(target) {
-				peek(links, {start:target+'\xff', end:target+'\xff\xff'}, function(err) {
+				peek(links, { start: target + '\xff', end: target + '\xff\xff' }, function(err) {
 					if (err) return bl.remove(target, cb); // no more links
 					cb();
 				});
@@ -251,7 +286,7 @@ module.exports = function(db, opts) {
 			ps.del(key, listeners.cb(key, function(err) {
 				if (err) return cb(err);
 				if (stat.link) return onlink();
-				links.del(key+'\xff', function(err) {
+				links.del(key + '\xff', function(err) {
 					if (err) return cb(err);
 					clean(key);
 				});
@@ -261,7 +296,7 @@ module.exports = function(db, opts) {
 
 	fs.readFile = function(key, opts, cb) {
 		if (typeof opts === 'function') return fs.readFile(key, null, opts);
-		if (typeof opts === 'string') opts = {encoding:opts};
+		if (typeof opts === 'string') opts = { encoding: opts };
 		if (!opts) opts = {};
 
 		var encoding = opts.encoding || 'binary';
@@ -333,7 +368,7 @@ module.exports = function(db, opts) {
 						ctime: ctime,
 						mtime: new Date(),
 						mode: mode,
-						type:'file'
+						type: 'file'
 					};
 
 					ps.put(key, s, function(err) {
@@ -378,13 +413,13 @@ module.exports = function(db, opts) {
 					if (!len) return bl.remove(blob, cb);
 
 					var ws = bl.createWriteStream(blob, {
-						start:size < len ? len-1 : len
+						start: size < len ? len - 1 : len
 					});
 
 					ws.on('error', cb);
 					ws.on('finish', cb);
 
-					if (size < len) ws.write(new Buffer([0]));
+					if (size < len) ws.write(Buffer.from([0]));
 					ws.end();
 				});
 			});
@@ -444,7 +479,7 @@ module.exports = function(db, opts) {
 						if (err) return cb(err);
 
 						var i = fds.indexOf(null);
-						if (i === -1) i = 10+fds.push(fds.length+10)-1;
+						if (i === -1) i = 10 + fds.push(fds.length + 10) - 1;
 
 						f.fd = i;
 						fds[i] = f;
@@ -456,7 +491,7 @@ module.exports = function(db, opts) {
 					var ontruncate = function(err) {
 						if (err) return cb(err);
 						if (stat) return onready();
-						ps.put(blob, {ctime:stat && stat.ctime, type:'file'}, onready);
+						ps.put(blob, { ctime: stat && stat.ctime, type: 'file' }, onready);
 					};
 
 					if (!f.append && f.writable) return bl.remove(blob, ontruncate);
@@ -481,10 +516,10 @@ module.exports = function(db, opts) {
 
 		if (pos === null) pos = f.writePos || 0;
 
-		var slice = buf.slice(off, off+len);
+		var slice = buf.slice(off, off + len);
 		f.writePos = pos + slice.length;
 
-		bl.write(f.blob, slice, {start:pos, append:true}, function(err) {
+		bl.write(f.blob, slice, { start: pos, append: true }, function(err) {
 			if (err) return cb(err);
 			cb(null, len, buf);
 		});
@@ -497,11 +532,11 @@ module.exports = function(db, opts) {
 
 		if (pos === null) pos = fs.readPos || 0;
 
-		bl.read(f.blob, {start:pos, end:pos+len-1}, function(err, read) {
+		bl.read(f.blob, { start: pos, end: pos + len - 1 }, function(err, read) {
 			if (err) return cb(err);
 			var slice = read.slice(0, len);
 			slice.copy(buf, off);
-			fs.readPos = pos+slice.length;
+			fs.readPos = pos + slice.length;
 			cb(null, slice.length, buf);
 		});
 	};
@@ -560,7 +595,7 @@ module.exports = function(db, opts) {
 			ps.get(name, function(err, stat) {
 				if (err && err.code !== 'ENOENT') return cb(err);
 				if (stat) return cb(errno.EEXIST(name));
-				ps.put(name, {type:'symlink', target:target, mode:octal(777)}, cb);
+				ps.put(name, { type: 'symlink', target: target, mode: octal(777) }, cb);
 			});
 		});
 	};
@@ -581,12 +616,12 @@ module.exports = function(db, opts) {
 			ps.get(name, function(err, st) {
 				if (err && err.code !== 'ENOENT') return cb(err);
 				if (st) return cb(errno.EEXIST(name));
-				var link = target+'\xff'+inc();
-				links.put(target+'\xff', target, function(err) {
+				var link = target + '\xff' + inc();
+				links.put(target + '\xff', target, function(err) {
 					if (err) return cb(err);
 					links.put(link, target, function(err) {
 						if (err) return cb(err);
-						ps.put(name, {type:'file', link:link, blob:target, mode:stat.mode}, cb);
+						ps.put(name, { type: 'file', link: link, blob: target, mode: stat.mode }, cb);
 					});
 				});
 			});

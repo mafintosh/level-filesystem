@@ -1,3 +1,4 @@
+var path = require('path');
 var events = require('events');
 
 module.exports = function() {
@@ -43,7 +44,13 @@ module.exports = function() {
 
 	that.cb = function(key, cb) {
 		return function(err, val) {
-			if (key) that.change(key);
+			if (key) {
+				that.change(key);
+
+				var dirname = path.dirname(key)
+
+				if (dirname !== key) that.change(dirname);
+			}
 			if (cb) cb(err, val);
 		};
 	};

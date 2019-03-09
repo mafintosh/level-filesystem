@@ -16,12 +16,12 @@ var normalize = function(key) {
 	key = key[0] === '/' ? key : '/' + key;
 	key = path.normalize(key);
 	if (key === '/') return key;
-	return key[key.length-1] === '/' ? key.slice(0, -1) : key;
+	return key[key.length - 1] === '/' ? key.slice(0, -1) : key;
 };
 
 var prefix = function(key) {
 	var depth = key.split('/').length.toString(36);
-	return '0000000000'.slice(depth.length)+depth+key;
+	return '0000000000'.slice(depth.length) + depth + key;
 };
 
 module.exports = function(db) {
@@ -32,7 +32,7 @@ module.exports = function(db) {
 	that.get = function(key, cb) {
 		key = normalize(key);
 		if (key === '/') return process.nextTick(cb.bind(null, null, ROOT, '/'));
-		db.get(prefix(key), {valueEncoding:'json'}, function(err, doc) {
+		db.get(prefix(key), { valueEncoding: 'json' }, function(err, doc) {
 			if (err && err.notFound) return cb(errno.ENOENT(key), null, key);
 			if (err) return cb(err, null, key);
 			cb(null, stat(doc), key);
@@ -53,12 +53,12 @@ module.exports = function(db) {
 		key = normalize(key);
 
 		var start = prefix(key === '/' ? key : key + '/');
-		var keys = db.createKeyStream({start: start, end: start+'\xff'});
+		var keys = db.createKeyStream({ start: start, end: start + '\xff' });
 
 		cb = once(cb);
 
 		keys.on('error', cb);
-		keys.pipe(concat({encoding:'object'}, function(files) {
+		keys.pipe(concat({ encoding: 'object' }, function(files) {
 			files = files.map(function(file) {
 				return file.split('/').pop();
 			});
@@ -102,7 +102,7 @@ module.exports = function(db) {
 	that.put = function(key, opts, cb) {
 		that.writable(key, function(err, key) {
 			if (err) return cb(err);
-			db.put(prefix(key), stat(opts), {valueEncoding:'json'}, cb);
+			db.put(prefix(key), stat(opts), { valueEncoding: 'json' }, cb);
 		});
 	};
 

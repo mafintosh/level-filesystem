@@ -4,7 +4,7 @@ var levelup = require('levelup');
 var memdown = require('memdown');
 
 var reset = function() {
-	return filesystem(levelup('memdb', {db:memdown}));
+	return filesystem(levelup(memdown()));
 };
 
 module.exports = function(name, fn) {
