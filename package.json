@@ -8,7 +8,7 @@
     "errno": "^0.1.1",
     "fwd-stream": "^1.0.4",
     "level-blobs": "^0.1.7",
-    "level-peek": "^1.0.6",
+    "level-peek": "^2.0.2",
     "level-sublevel": "^6.6.5",
     "octal": "^1.0.0",
     "once": "^1.3.0",
