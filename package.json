@@ -4,7 +4,7 @@
   "description": "Full implementation of the fs module on top of leveldb",
   "repository": "git://github.com:mafintosh/level-filesystem.git",
   "dependencies": {
-    "concat-stream": "^1.4.4",
+    "concat-stream": "^2.0.0",
     "errno": "^0.1.1",
     "fwd-stream": "^1.0.4",
     "level-blobs": "^0.1.7",
