@@ -42,11 +42,13 @@ module.exports = function(db, opts) {
 			if (err && err.code !== 'ENOENT') return cb(err);
 			if (stat) return cb(errno.EEXIST(key));
 
+			var isNewDir = (err && err.code === 'ENOENT')
+
 			ps.put(key, {
 				type:'directory',
 				mode: mode,
 				size: 4096
-			}, listeners.cb(key, cb));
+			}, listeners.cb(key, isNewDir, cb));
 		});
 	};
 
@@ -57,7 +59,7 @@ module.exports = function(db, opts) {
 			fs.readdir(key, function(err, files) {
 				if (err) return cb(err);
 				if (files.length) return cb(errno.ENOTEMPTY(key));
-				ps.del(key, listeners.cb(key, cb));
+				ps.del(key, listeners.cb(key, true, cb));
 			});
 		});
 
@@ -103,7 +105,7 @@ module.exports = function(db, opts) {
 		if (!cb) cb = noop;
 		lookup(key, function(err, stat, key) {
 			if (err) return cb(err);
-			ps.update(key, {mode:mode}, listeners.cb(key, cb));
+			ps.update(key, {mode:mode}, listeners.cb(key, false, cb));
 		});
 	};
 
@@ -119,7 +121,7 @@ module.exports = function(db, opts) {
 		if (!cb) cb = noop;
 		lookup(key, function(err, stat, key) {
 			if (err) return cb(err);
-			ps.update(key, {uid:uid, gid:gid}, listeners.cb(key, cb));
+			ps.update(key, {uid:uid, gid:gid}, listeners.cb(key, false, cb));
 		});
 	};
 
@@ -138,7 +140,7 @@ module.exports = function(db, opts) {
 			var upd = {};
 			if (atime) upd.atime = atime;
 			if (mtime) upd.mtime = mtime;
-			ps.update(key, upd, listeners.cb(key, cb));
+			ps.update(key, upd, listeners.cb(key, false, cb));
 		});
 	};
 
@@ -149,7 +151,7 @@ module.exports = function(db, opts) {
 			if (err) return cb(err);
 
 			var rename = function() {
-				cb = listeners.cb(to, listeners.cb(from, cb));
+				cb = listeners.cb(to, true, listeners.cb(from, true, cb));
 				ps.put(to, statFrom, function(err) {
 					if (err) return cb(err);
 					ps.del(from, cb);
@@ -189,7 +191,7 @@ module.exports = function(db, opts) {
 		if (!opts) opts = {};
 		if (!cb) cb = noop;
 
-		if (!Buffer.isBuffer(data)) data = new Buffer(data, opts.encoding || 'utf-8');
+		if (!Buffer.isBuffer(data)) data = Buffer.from(data || [], opts.encoding || 'utf-8');
 
 		var flags = opts.flags || 'w';
 		opts.append = flags[0] !== 'w';
@@ -198,6 +200,8 @@ module.exports = function(db, opts) {
 			if (err && err.code !== 'ENOENT') return cb(err);
 			if (stat && stat.isDirectory()) return cb(errno.EISDIR(key));
 			if (stat && flags[1] === 'x') return cb(errno.EEXIST(key));
+
+			var isNewFile = (err && err.code === 'ENOENT');
 
 			var blob = stat && stat.blob || key;
 			ps.writable(key, function(err) {
@@ -211,7 +215,7 @@ module.exports = function(db, opts) {
 						mtime: new Date(),
 						mode: opts.mode || octal(666),
 						type:'file'
-					}, listeners.cb(key, cb));
+					}, listeners.cb(key, isNewFile, cb));
 				});
 			});
 		});
@@ -248,7 +252,7 @@ module.exports = function(db, opts) {
 				});
 			};
 
-			ps.del(key, listeners.cb(key, function(err) {
+			ps.del(key, listeners.cb(key, true, function(err) {
 				if (err) return cb(err);
 				if (stat.link) return onlink();
 				links.del(key+'\xff', function(err) {
@@ -374,7 +378,7 @@ module.exports = function(db, opts) {
 				ps.writable(key, function(err) {
 					if (err) return cb(err);
 
-					cb = once(listeners.cb(key, cb));
+					cb = once(listeners.cb(key, false, cb));
 					if (!len) return bl.remove(blob, cb);
 
 					var ws = bl.createWriteStream(blob, {
@@ -384,7 +388,7 @@ module.exports = function(db, opts) {
 					ws.on('error', cb);
 					ws.on('finish', cb);
 
-					if (size < len) ws.write(new Buffer([0]));
+					if (size < len) ws.write(Buffer.from([0]));
 					ws.end();
 				});
 			});
@@ -393,20 +397,21 @@ module.exports = function(db, opts) {
 
 	fs.watchFile = function(key, opts, cb) {
 		if (typeof opts === 'function') return fs.watchFile(key, null, opts);
-		return listeners.watch(ps.normalize(key), cb);
-	};
-
-	fs.unwatchFile = function(key, cb) {
-		listeners.unwatch(ps.normalize(key), cb);
-	};
-
-	fs.watch = function(key, opts, cb) {
-		if (typeof opts === 'function') return fs.watch(key, null, opts)
 		return listeners.watcher(ps.normalize(key), cb);
 	};
 
+	fs.unwatchFile = function(key, opts, cb) {
+		if (typeof opts === 'function') return fs.unwatchFile(key, null, opts);
+		return listeners.unwatchFile(ps.normalize(key), cb);
+	};
+
+	fs.watch = function(key, opts, cb) {
+		if (typeof opts === 'function') return fs.watch(key, null, opts);
+		return listeners.directoryWatcher(ps.normalize(key), cb);
+	};
+	
 	fs.notify = function(cb) {
-		listeners.on('change', cb)
+		listeners.on('change', cb);
 	}
 
 	fs.open = function(key, flags, mode, cb) {
@@ -471,7 +476,7 @@ module.exports = function(db, opts) {
 		if (!f) return nextTick(cb, errno.EBADF());
 
 		fds[fd] = null;
-		nextTick(listeners.cb(f.key, cb));
+		nextTick(listeners.cb(f.key, false, cb));
 	};
 
 	fs.write = function(fd, buf, off, len, pos, cb) {
