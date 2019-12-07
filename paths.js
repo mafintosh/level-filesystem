@@ -60,7 +60,7 @@ module.exports = function(db) {
 		keys.on('error', cb);
 		keys.pipe(concat({encoding:'object'}, function(files) {
 			files = files.map(function(file) {
-				return file.split('/').pop();
+				return file.toString().split('/').pop();
 			});
 
 			cb(null, files);
@@ -114,3 +114,5 @@ module.exports = function(db) {
 
 	return that;
 };
+
+module.exports.normalize = normalize;
